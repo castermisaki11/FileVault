@@ -69,36 +69,33 @@
         </button>
       </div>
 
-      <!-- DUAL PANEL: UPLOAD & DOWNLOAD -->
-      <div class="dual-panel">
-
-        <!-- UPLOAD PANEL -->
-        <div class="dp-panel dp-upload">
-          <div class="dp-panel-header">
-            <span class="dp-panel-icon">⬆️</span>
-            <span class="dp-panel-title">อัปโหลด</span>
-          </div>
-          <div class="dp-drop-zone" id="dp-drop-zone" onclick="triggerUpload()"
-               ondragover="dpDragOver(event)" ondragleave="dpDragLeave(event)" ondrop="dpDrop(event)">
-            <div class="dp-drop-ico">📂</div>
-            <div class="dp-drop-text">วางไฟล์ที่นี่<br/><span class="dp-drop-sub">หรือแตะเพื่อเลือก</span></div>
-          </div>
-          <button class="dp-btn dp-btn-upload" onclick="triggerUpload()">
-            <span>⬆</span> เลือกไฟล์อัปโหลด
-          </button>
+      <!-- TOOLBAR -->
+      <div class="toolbar-wrap">
+        <div class="search-box">
+          <span class="search-ico">🔍</span>
+          <input class="search-inp" id="search-inp" placeholder="ค้นหาไฟล์ (ทุก folder อัตโนมัติ)..." oninput="onSearch()"/>
+          <button class="search-clear hidden" id="search-clear" onclick="clearSearch()">✕</button>
+        </div>
+        <div class="toolbar-actions">
+          <button class="tbtn tbtn-blue" onclick="triggerUpload()">↑ อัปโหลด</button>
+          <button class="tbtn tbtn-gray" onclick="downloadAll()">↓ ทั้งหมด</button>
           <input type="file" id="upload-input" multiple style="display:none" onchange="handleUpload(event)"/>
         </div>
+      </div>
+
+      <!-- NEW FILE ROW -->
+      <div class="newfile-row">
+        <input class="new-input" id="new-filename" placeholder="ชื่อไฟล์ใหม่... (กด Enter)" onkeydown="if(event.key==='Enter')newFile()"/>
+        <button class="tbtn tbtn-green" onclick="newFile()">+ สร้าง</button>
+      </div>
 
       <!-- SORT BAR -->
       <div class="sort-bar">
         <span class="sort-label" id="file-count-label">0 ไฟล์</span>
         <div class="sort-btns">
-          <button class="sort-btn active" id="sort-btn-name-asc"  onclick="setSort('name-asc',this)">A→Z</button>
-          <button class="sort-btn"        id="sort-btn-name-desc" onclick="setSort('name-desc',this)">Z→A</button>
-          <button class="sort-btn"        id="sort-btn-date-asc"  onclick="setSort('date-asc',this)">วันที่ ↑</button>
-          <button class="sort-btn"        id="sort-btn-date-desc" onclick="setSort('date-desc',this)">วันที่ ↓</button>
-          <button class="sort-btn"        id="sort-btn-size-asc"  onclick="setSort('size-asc',this)">ขนาด ↑</button>
-          <button class="sort-btn"        id="sort-btn-size-desc" onclick="setSort('size-desc',this)">ขนาด ↓</button>
+          <button class="sort-btn active" id="sort-name" onclick="setSort('name',this)">ชื่อ</button>
+          <button class="sort-btn" id="sort-date" onclick="setSort('date',this)">วันที่</button>
+          <button class="sort-btn" id="sort-size" onclick="setSort('size',this)">ขนาด</button>
         </div>
       </div>
 
