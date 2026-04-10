@@ -543,24 +543,36 @@ app.get('/api/r2/status', (req,res) => {
   });
 });
 
-// ── REMOTE SHUTDOWN ROUTE ──
+// ── ระบบปิดเซิร์ฟเวอร์ระยะไกลสำหรับทดสอบ ──
 app.get('/api/admin/shutdown', (req, res) => {
-  // สร้างรหัสผ่านป้องกันไว้ใน .env หรือกำหนดตรงนี้
-  const AUTH_KEY = process.env.SHUTDOWN_KEY || "1234"; 
-  const clientKey = req.query.key;
+  const MASTER_KEY = "123456"; // รหัสที่คุณกำหนดไว้
+  const userKey = req.query.key;
 
-  if (clientKey === AUTH_KEY) {
-    res.json({ ok: true, message: "Server is archiving and shutting down..." });
-    
-    console.log(`\n${RED}${BOLD}[!] Remote shutdown command received.${RESET}`);
-    
-    // เรียกใช้ฟังก์ชันที่มีอยู่แล้วในไฟล์ของคุณ
-    // ฟังก์ชันนี้จะทำการ Zip ไฟล์ใน UPLOAD_DIR เก็บไว้ใน dumps ก่อนปิดตัวลง
-    setImmediate(() => archiveAndShutdown(app.get('server')));
+  if (userKey === MASTER_KEY) {
+    res.json({ 
+      ok: true, 
+      message: "กำลังสำรองข้อมูลและปิดเซิร์ฟเวอร์...",
+      time: new Date().toLocaleString()
+    });
+
+    console.log(`\n${RED}${BOLD}[!] คำสั่งปิดเครื่องทำงาน (รหัสผ่านถูกต้อง)${RESET}`);
+
+    // ใช้ฟังก์ชัน archiveAndShutdown ที่มีอยู่ในไฟล์เดิม
+    // ฟังก์ชันนี้จะทำการ Zip ไฟล์ใน uploads ลงใน dumps ก่อนปิด
+    setImmediate(() => {
+      const server = app.get('server');
+      if (server) {
+        archiveAndShutdown(server);
+      } else {
+        process.exit(0);
+      }
+    });
   } else {
-    res.status(401).json({ ok: false, error: "Unauthorized" });
+    console.log(`${YELLOW}[!] มีการพยายามปิดเซิร์ฟเวอร์แต่รหัสผิด: ${userKey}${RESET}`);
+    res.status(401).json({ ok: false, error: "รหัสผ่านไม่ถูกต้อง!" });
   }
 });
+
 
 
 // ── Error handler ──
