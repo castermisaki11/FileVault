@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const multer  = require('multer');
 const path    = require('path');
@@ -6,6 +7,7 @@ const cors    = require('cors');
 const os      = require('os');
 const http    = require('http');
 const { execSync } = require('child_process');
+
 
 // ── R2 Module ──
 const r2 = require('./r2');
@@ -466,7 +468,8 @@ app.set('server',httpServer);
 httpServer.listen(PORT,'0.0.0.0',()=>{
   const info=getStorageInfo();
   console.log(`\n${BOLD}${CYAN}  ☁  FileVault Server${RESET}`);
-  console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
+  console.log(`${GRAY}  
+  ─────────────────────────────────────${RESET}`);
   console.log(`  ${BOLD}Local  :${RESET}  http://localhost:${PORT}`);
   console.log(`  ${BOLD}Network:${RESET}  ${GREEN}http://${ip}:${PORT}${RESET}`);
   console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
@@ -475,5 +478,6 @@ httpServer.listen(PORT,'0.0.0.0',()=>{
   console.log(`  ${BOLD}R2     :${RESET} ${r2ok ? GREEN+'✓ '+r2.R2_CONFIG.BUCKET : RED+'✗ ยังไม่ได้ตั้งค่า env'}${RESET}`);
   console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
   console.log(`\n  ${GRAY}[Ctrl+C เพื่อหยุด]${RESET}\n`);
+  console.log(process.env.R2_BUCKET);
   if(CONFIG.STATUS_INTERVAL>0){printStatus();setInterval(printStatus,CONFIG.STATUS_INTERVAL);}
 });
