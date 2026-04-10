@@ -238,7 +238,7 @@ app.get('/api/search', (req,res) => {
 });
 
 // UPLOAD
-app.post('/api/upload', checkStorageLimit, upload.array('files'), (req,res)=>{
+app.post('/api/upload', checkStorageLimit, upload.array('files'), async (req,res)=>{
   if(!req.files?.length){stats.errors++;return res.status(400).json({ok:false,error:'ไม่มีไฟล์'});}
   if(STORAGE_LIMIT_BYTES>0&&getUploadDirSize()>STORAGE_LIMIT_BYTES){
     req.files.forEach(f=>{try{fs.unlinkSync(f.path);}catch{}});stats.errors++;
@@ -246,7 +246,16 @@ app.post('/api/upload', checkStorageLimit, upload.array('files'), (req,res)=>{
     setImmediate(()=>archiveAndShutdown(req.app.get('server'))); return;
   }
   stats.uploads+=req.files.length;
-  res.json({ok:true,saved:req.files.map(f=>({name:f.filename,size:f.size})),folder:req.query.folder||'',storage:getStorageInfo()});
+  const folder = req.query.folder||'';
+  for (const f of req.files) {
+    try {
+      const key = folder ? `${folder}/${f.filename}` : f.filename;
+      const buffer = fs.readFileSync(f.path);
+      await r2.uploadObject(key, buffer, f.mimetype);
+      stats.r2_uploads++;
+    } catch(e) { console.error('R2 upload error:', e.message); }
+  }
+  res.json({ok:true,saved:req.files.map(f=>({name:f.filename,size:f.size})),folder:folder,storage:getStorageInfo()});
 });
 
 // MOVE / COPY
@@ -285,11 +294,22 @@ app.patch('/api/rename', (req,res)=>{
 });
 
 // DOWNLOAD
-app.get('/api/download/:name',(req,res)=>{
-  const dir=safeFolderPath(req.query.folder||''), fp=path.join(dir,path.basename(req.params.name));
-  if(!fp.startsWith(UPLOAD_DIR)){stats.errors++;return res.status(400).json({ok:false,error:'path ไม่ถูกต้อง'});}
-  if(!fs.existsSync(fp)){stats.errors++;return res.status(404).json({ok:false,error:'ไม่พบไฟล์'});}
-  stats.downloads++; res.download(fp);
+app.get('/api/download/:name', async (req,res)=>{
+  const folder=req.query.folder||'', name=path.basename(req.params.name);
+  const key = folder ? `${folder}/${name}` : name;
+  try {
+    const obj = await r2.downloadObject(key);
+    stats.downloads++; stats.r2_downloads++;
+    res.set('Content-Type', obj.contentType||'application/octet-stream');
+    res.set('Content-Disposition', `attachment; filename="${name}"`);
+    if(obj.contentLength) res.set('Content-Length', obj.contentLength);
+    res.send(obj.buffer);
+  } catch(e) {
+    // fallback ดึงจาก disk ถ้า R2 ไม่มี
+    const dir=safeFolderPath(folder), fp=path.join(dir,name);
+    if(fs.existsSync(fp)){ stats.downloads++; return res.download(fp); }
+    stats.errors++; res.status(404).json({ok:false,error:'ไม่พบไฟล์'});
+  }
 });
 
 // DUMP
@@ -316,11 +336,19 @@ app.put('/api/files/:name',(req,res)=>{
 });
 
 // DELETE FILE
-app.delete('/api/delete/:name',(req,res)=>{
-  const dir=safeFolderPath(req.query.folder||''), fp=path.join(dir,path.basename(req.params.name));
+app.delete('/api/delete/:name', async (req,res)=>{
+  const folder=req.query.folder||'', name=path.basename(req.params.name);
+  const dir=safeFolderPath(folder), fp=path.join(dir,name);
   if(!fp.startsWith(UPLOAD_DIR)){stats.errors++;return res.status(400).json({ok:false,error:'path ไม่ถูกต้อง'});}
-  if(!fs.existsSync(fp)){stats.errors++;return res.status(404).json({ok:false,error:'ไม่พบไฟล์'});}
-  fs.unlinkSync(fp); stats.deletes++; res.json({ok:true,storage:getStorageInfo()});
+  // ลบจาก disk (ถ้ามี)
+  if(fs.existsSync(fp)){ try{fs.unlinkSync(fp);}catch{} }
+  // ลบจาก R2
+  try {
+    const key = folder ? `${folder}/${name}` : name;
+    await r2.deleteObject(key);
+    stats.r2_deletes++;
+  } catch(e) { console.error('R2 delete error:', e.message); }
+  stats.deletes++; res.json({ok:true,storage:getStorageInfo()});
 });
 
 // ═══════════════════════════════════════════════
