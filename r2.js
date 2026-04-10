@@ -38,6 +38,7 @@ function createClient() {
       accessKeyId:     R2_CONFIG.ACCESS_KEY_ID,
       secretAccessKey: R2_CONFIG.SECRET_ACCESS_KEY,
     },
+    forcePathStyle: true,  // เพิ่มบรรทัดนี้
   });
 }
 
