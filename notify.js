@@ -96,7 +96,7 @@ async function sendOnline() {
             { name: "🕒 Time (TH)", value: getThaiTime(), inline: false },
             { name: "⏱️ Uptime", value: "0s", inline: true },
             { name: "🌐 IP", value: getLocalIP(), inline: false },
-            ...(domain ? [{ name: "🔗 Domain", value: domain }] : [])
+            ...(domain ? [{ name: "🔗 Domain", value: filevault-wiu1.onrender.com }] : [])
           ]
         }
       ]
