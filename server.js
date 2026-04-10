@@ -1,10 +1,6 @@
 require('dotenv').config();
-console.log('ENV CHECK:', {
-  account: process.env.R2_ACCOUNT_ID ? 'ok' : 'missing',
-  key: process.env.R2_ACCESS_KEY_ID ? 'ok' : 'missing',
-  secret: process.env.R2_SECRET_ACCESS_KEY ? 'ok' : 'missing',
-  bucket: process.env.R2_BUCKET ? 'ok' : 'missing',
-});
+console.log("WEBHOOK =", process.env.WEBHOOK_URL);
+console.log("ALL ENV =", process.env);
 const express = require('express');
 const multer  = require('multer');
 const path    = require('path');
@@ -13,13 +9,48 @@ const cors    = require('cors');
 const os      = require('os');
 const http    = require('http');
 const { execSync } = require('child_process');
-
-
-// ── R2 Module ──
+const { sendOnline, sendOffline } = require("./notify");
 const r2 = require('./r2');
 
+const app = express(); // 👈 ต้องมาก่อน
+
+// ✅ PORT ต้องประกาศก่อนใช้
+const PORT = process.env.FV_PORT || 3000;
+
+// middleware
+app.use(cors());
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send("Server is running");
+});
+
+function startServer(port) {
+  const server = http.createServer(app);
+
+  app.set("server", server);
+
+  server.listen(port, "0.0.0.0", async () => {
+    console.log("Server started on port", port);
+
+    try {
+      await sendOnline?.();
+    } catch (e) {
+      console.log("Discord error:", e.message);
+    }
+  });
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.log(`Port ${port} busy → trying ${port + 1}`);
+      startServer(port + 1);
+    } else {
+      console.error(err);
+    }
+  });
+}
+
 const CONFIG = {
-  PORT:            process.env.FV_PORT          || 3000,
   STORAGE_LIMIT:   process.env.FV_STORAGE_LIMIT || '5gb',
   FILE_SIZE_LIMIT: process.env.FV_FILE_LIMIT    || '200mb',
   STATUS_INTERVAL: process.env.FV_STATUS_MS     || 5000,
@@ -48,12 +79,11 @@ function formatSize(bytes) {
 const STORAGE_LIMIT_BYTES = parseSize(CONFIG.STORAGE_LIMIT);
 const FILE_SIZE_BYTES     = parseSize(CONFIG.FILE_SIZE_LIMIT);
 
-const app        = express();
-const PORT       = CONFIG.PORT;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const DATA_DIR   = path.join(__dirname, 'data');
 const DUMP_DIR   = path.join(__dirname, 'dumps');
 [UPLOAD_DIR, DATA_DIR, DUMP_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
+
 
 // ── Folder helpers ──
 function safeFolderPath(folder) {
@@ -521,21 +551,90 @@ app.use((err,req,res,next)=>{
 });
 
 // ── Start ──
-const ip=getLocalIP(), httpServer=http.createServer(app);
-app.set('server',httpServer);
-httpServer.listen(PORT,'0.0.0.0',()=>{
-  const info=getStorageInfo();
-  console.log(`\n${BOLD}${CYAN}  ☁  FileVault Server${RESET}`);
-  console.log(`${GRAY}  
-  ─────────────────────────────────────${RESET}`);
-  console.log(`  ${BOLD}Local  :${RESET}  http://localhost:${PORT}`);
-  console.log(`  ${BOLD}Network:${RESET}  ${GREEN}http://${ip}:${PORT}${RESET}`);
-  console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
-  console.log(`  ${BOLD}Storage:${RESET} ${CYAN}${info.unlimited?'ไม่จำกัด':formatSize(info.limit)}${RESET}  Per-file: ${CYAN}${FILE_SIZE_BYTES?formatSize(FILE_SIZE_BYTES):'ไม่จำกัด'}${RESET}`);
-  const r2ok = !!(r2.R2_CONFIG.ACCOUNT_ID && r2.R2_CONFIG.BUCKET);
-  console.log(`  ${BOLD}R2     :${RESET} ${r2ok ? GREEN+'✓ '+r2.R2_CONFIG.BUCKET : RED+'✗ ยังไม่ได้ตั้งค่า env'}${RESET}`);
-  console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
-  console.log(`\n  ${GRAY}[Ctrl+C เพื่อหยุด]${RESET}\n`);
-  console.log(process.env.R2_BUCKET);
-  if(CONFIG.STATUS_INTERVAL>0){printStatus();setInterval(printStatus,CONFIG.STATUS_INTERVAL);}
+function startServer(port) {
+  const httpServer = http.createServer(app);
+
+  app.set("server", httpServer);
+
+  httpServer.listen(port, "0.0.0.0", async () => {
+    const ip = getLocalIP();
+    const info = getStorageInfo();
+
+    console.log(`\n${BOLD}${CYAN}  ☁  FileVault Server${RESET}`);
+    console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
+    console.log(`  ${BOLD}Local  :${RESET}  http://localhost:${port}`);
+    console.log(`  ${BOLD}Network:${RESET}  ${GREEN}http://${ip}:${port}${RESET}`);
+    console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
+
+    console.log(
+      `  ${BOLD}Storage:${RESET} ${CYAN}${
+        info.unlimited ? "ไม่จำกัด" : formatSize(info.limit)
+      }${RESET}  Per-file: ${CYAN}${
+        CONFIG.FILE_SIZE_LIMIT ? CONFIG.FILE_SIZE_LIMIT : "ไม่จำกัด"
+      }${RESET}`
+    );
+
+    const r2ok = !!(r2?.R2_CONFIG?.ACCOUNT_ID && r2?.R2_CONFIG?.BUCKET);
+    console.log(
+      `  ${BOLD}R2     :${RESET} ${
+        r2ok
+          ? GREEN + "✓ " + r2.R2_CONFIG.BUCKET
+          : RED + "✗ ยังไม่ได้ตั้งค่า env"
+      }${RESET}`
+    );
+
+    console.log(`${GRAY}  ─────────────────────────────────────${RESET}`);
+    console.log(`\n  ${GRAY}[Ctrl+C เพื่อหยุด]${RESET}\n`);
+
+    console.log(process.env.R2_BUCKET);
+
+    try {
+      await sendOnline?.();
+    } catch (e) {
+      console.log("Discord error:", e.message);
+    }
+
+    if (CONFIG.STATUS_INTERVAL > 0) {
+      printStatus();
+      setInterval(printStatus, CONFIG.STATUS_INTERVAL);
+    }
+  });
+
+  // ======================
+  // PORT BUSY HANDLER
+  // ======================
+  httpServer.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.log(`Port ${port} busy → trying ${port + 1}`);
+      startServer(port + 1);
+    } else {
+      console.error(err);
+    }
+  });
+}
+
+// ======================
+// GRACEFUL SHUTDOWN
+// ======================
+process.on("SIGINT", async () => {
+  try {
+    await sendOffline?.();
+  } catch {}
+
+  const server = app.get("server");
+  if (server) server.close(() => process.exit(0));
 });
+
+// ======================
+// START
+// ======================
+startServer(PORT);
+
+// ท้ายไฟล์ server.js
+module.exports = {
+  CONFIG,
+  STORAGE_LIMIT_BYTES,
+  FILE_SIZE_BYTES,
+  formatSize,
+  stats // ส่งออก object stats ไปด้วยก็ได้
+};
