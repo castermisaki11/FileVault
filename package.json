@@ -7,7 +7,11 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1028.0",
+    "@aws-sdk/lib-storage": "^3.1028.0",
+    "@aws-sdk/s3-request-presigner": "^3.1028.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.1",
     "express": "^4.22.1",
     "multer": "^1.4.5-lts.1"
   }
