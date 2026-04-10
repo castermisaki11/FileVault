@@ -84,6 +84,13 @@ async function loadFolders() {
   } catch(e) { console.error('loadFolders:', e); }
 }
 
+function confirmDownload() {
+  const ok = confirm("คุณต้องการดาวน์โหลดไฟล์ทั้งหมดใช่ไหม?");
+  if (!ok) return;
+
+  downloadAll();
+}
+
 function renderFolderSidebar() {
   const sb = document.getElementById('folder-sidebar');
   if (!sb) return;
