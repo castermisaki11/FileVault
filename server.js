@@ -1,4 +1,10 @@
 require('dotenv').config();
+console.log('ENV CHECK:', {
+  account: process.env.R2_ACCOUNT_ID ? 'ok' : 'missing',
+  key: process.env.R2_ACCESS_KEY_ID ? 'ok' : 'missing',
+  secret: process.env.R2_SECRET_ACCESS_KEY ? 'ok' : 'missing',
+  bucket: process.env.R2_BUCKET ? 'ok' : 'missing',
+});
 const express = require('express');
 const multer  = require('multer');
 const path    = require('path');
