@@ -9,7 +9,7 @@ const { execSync } = require('child_process');
 
 const CONFIG = {
   PORT:            process.env.FV_PORT          || 3000,
-  STORAGE_LIMIT:   process.env.FV_STORAGE_LIMIT || '512mb',
+  STORAGE_LIMIT:   process.env.FV_STORAGE_LIMIT || '20gb',
   FILE_SIZE_LIMIT: process.env.FV_FILE_LIMIT    || '200mb',
   STATUS_INTERVAL: process.env.FV_STATUS_MS     || 5000,
 };
