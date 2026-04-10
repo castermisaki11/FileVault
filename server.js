@@ -543,38 +543,6 @@ app.get('/api/r2/status', (req,res) => {
   });
 });
 
-// ── ระบบปิดเซิร์ฟเวอร์ระยะไกลสำหรับทดสอบ ──
-app.get('/api/admin/shutdown', (req, res) => {
-  const MASTER_KEY = "123456"; // รหัสที่คุณกำหนดไว้
-  const userKey = req.query.key;
-
-  if (userKey === MASTER_KEY) {
-    res.json({ 
-      ok: true, 
-      message: "กำลังสำรองข้อมูลและปิดเซิร์ฟเวอร์...",
-      time: new Date().toLocaleString()
-    });
-
-    console.log(`\n${RED}${BOLD}[!] คำสั่งปิดเครื่องทำงาน (รหัสผ่านถูกต้อง)${RESET}`);
-
-    // ใช้ฟังก์ชัน archiveAndShutdown ที่มีอยู่ในไฟล์เดิม
-    // ฟังก์ชันนี้จะทำการ Zip ไฟล์ใน uploads ลงใน dumps ก่อนปิด
-    setImmediate(() => {
-      const server = app.get('server');
-      if (server) {
-        archiveAndShutdown(server);
-      } else {
-        process.exit(0);
-      }
-    });
-  } else {
-    console.log(`${YELLOW}[!] มีการพยายามปิดเซิร์ฟเวอร์แต่รหัสผิด: ${userKey}${RESET}`);
-    res.status(401).json({ ok: false, error: "รหัสผ่านไม่ถูกต้อง!" });
-  }
-});
-
-
-
 // ── Error handler ──
 app.use((err,req,res,next)=>{
   stats.errors++;
