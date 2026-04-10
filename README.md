@@ -1,7 +1,7 @@
 #FlareVault
 
 
-Simple, fast, and secure file storage server powered by Cloudflare R2
+##Simple, fast, and secure file storage server powered by Cloudflare R2
 
 Tech Stack
 
