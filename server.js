@@ -543,6 +543,26 @@ app.get('/api/r2/status', (req,res) => {
   });
 });
 
+// ── REMOTE SHUTDOWN ROUTE ──
+app.get('/api/admin/shutdown', (req, res) => {
+  // สร้างรหัสผ่านป้องกันไว้ใน .env หรือกำหนดตรงนี้
+  const AUTH_KEY = process.env.SHUTDOWN_KEY || "1234"; 
+  const clientKey = req.query.key;
+
+  if (clientKey === AUTH_KEY) {
+    res.json({ ok: true, message: "Server is archiving and shutting down..." });
+    
+    console.log(`\n${RED}${BOLD}[!] Remote shutdown command received.${RESET}`);
+    
+    // เรียกใช้ฟังก์ชันที่มีอยู่แล้วในไฟล์ของคุณ
+    // ฟังก์ชันนี้จะทำการ Zip ไฟล์ใน UPLOAD_DIR เก็บไว้ใน dumps ก่อนปิดตัวลง
+    setImmediate(() => archiveAndShutdown(app.get('server')));
+  } else {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+});
+
+
 // ── Error handler ──
 app.use((err,req,res,next)=>{
   stats.errors++;
