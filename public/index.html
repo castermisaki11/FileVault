@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>FileVault</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="stylesheet" href="styles.css"/>
+<link rel="stylesheet" href="categories.css"/>
+</head>
+<body>
+
+<div id="page-app" class="page active">
+
+  <!-- TOP NAV -->
+  <div class="topnav">
+    <div class="topnav-left">
+      <button class="topnav-btn" onclick="toggleSidebar()" title="ซ่อน/แสดง Sidebar">☰</button>
+      <div class="topnav-logo">☁</div>
+      <div class="topnav-title" id="topnav-title">FileVault</div>
+    </div>
+    <div class="topnav-right">
+      <button class="topnav-btn" onclick="toggleView()" id="view-toggle-btn" title="สลับมุมมอง">⊞</button>
+      <button class="topnav-btn" onclick="toggleDark()" id="dark-btn" title="Dark Mode">🌙</button>
+    </div>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="main-layout">
+
+    <!-- FOLDER SIDEBAR -->
+    <div class="folder-sidebar-wrap">
+      <div class="folder-sidebar-title">📁 Folders</div>
+      <div id="folder-sidebar"></div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content-wrap">
+
+      <!-- BREADCRUMB -->
+      <div id="breadcrumb" class="breadcrumb"><span class="bc-root">🏠 ทั้งหมด</span></div>
+
+      <!-- CATEGORY TABS -->
+      <div class="cat-tabs" id="cat-tabs">
+        <button class="cat-tab active" data-cat="all" onclick="setCategory(this,'all')">
+          <span class="cat-tab-ico">📁</span><span class="cat-tab-lbl">ทั้งหมด</span>
+          <span class="cat-tab-count" id="cnt-all">0</span>
+        </button>
+        <button class="cat-tab" data-cat="image" onclick="setCategory(this,'image')">
+          <span class="cat-tab-ico">🖼️</span><span class="cat-tab-lbl">รูปภาพ</span>
+          <span class="cat-tab-count" id="cnt-image">0</span>
+        </button>
+        <button class="cat-tab" data-cat="code" onclick="setCategory(this,'code')">
+          <span class="cat-tab-ico">💻</span><span class="cat-tab-lbl">โค้ด</span>
+          <span class="cat-tab-count" id="cnt-code">0</span>
+        </button>
+        <button class="cat-tab" data-cat="doc" onclick="setCategory(this,'doc')">
+          <span class="cat-tab-ico">📄</span><span class="cat-tab-lbl">เอกสาร</span>
+          <span class="cat-tab-count" id="cnt-doc">0</span>
+        </button>
+        <button class="cat-tab" data-cat="zip" onclick="setCategory(this,'zip')">
+          <span class="cat-tab-ico">🗜️</span><span class="cat-tab-lbl">ZIP</span>
+          <span class="cat-tab-count" id="cnt-zip">0</span>
+        </button>
+        <button class="cat-tab" data-cat="other" onclick="setCategory(this,'other')">
+          <span class="cat-tab-ico">📦</span><span class="cat-tab-lbl">อื่นๆ</span>
+          <span class="cat-tab-count" id="cnt-other">0</span>
+        </button>
+      </div>
+
+      <!-- TOOLBAR -->
+      <div class="toolbar-wrap">
+        <div class="search-box">
+          <span class="search-ico">🔍</span>
+          <input class="search-inp" id="search-inp" placeholder="ค้นหาไฟล์ (ทุก folder อัตโนมัติ)..." oninput="onSearch()"/>
+          <button class="search-clear hidden" id="search-clear" onclick="clearSearch()">✕</button>
+        </div>
+        <div class="toolbar-actions">
+          <button class="tbtn tbtn-blue" onclick="triggerUpload()">↑ อัปโหลด</button>
+          <button class="tbtn tbtn-gray" onclick="downloadAll()">↓ ทั้งหมด</button>
+          <input type="file" id="upload-input" multiple style="display:none" onchange="handleUpload(event)"/>
+        </div>
+      </div>
+
+      <!-- NEW FILE ROW -->
+      <div class="newfile-row">
+        <input class="new-input" id="new-filename" placeholder="ชื่อไฟล์ใหม่... (กด Enter)" onkeydown="if(event.key==='Enter')newFile()"/>
+        <button class="tbtn tbtn-green" onclick="newFile()">+ สร้าง</button>
+      </div>
+
+      <!-- SORT BAR -->
+      <div class="sort-bar">
+        <span class="sort-label" id="file-count-label">0 ไฟล์</span>
+        <div class="sort-btns">
+          <button class="sort-btn active" id="sort-name" onclick="setSort('name',this)">ชื่อ</button>
+          <button class="sort-btn" id="sort-date" onclick="setSort('date',this)">วันที่</button>
+          <button class="sort-btn" id="sort-size" onclick="setSort('size',this)">ขนาด</button>
+        </div>
+      </div>
+
+      <!-- FILE AREA -->
+      <div class="file-area" id="file-area">
+        <div class="file-grid" id="file-grid"></div>
+      </div>
+
+    </div><!-- end content-wrap -->
+  </div><!-- end main-layout -->
+
+</div>
+
+<!-- FILE EDITOR MODAL -->
+<div class="modal-bg hidden" id="editor-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-head">
+      <div class="modal-head-info">
+        <span id="modal-ficon" class="modal-ficon"></span>
+        <div>
+          <div id="modal-fname" class="modal-title"></div>
+          <div class="modal-meta">
+            <span id="modal-fsize" class="modal-meta-txt"></span>
+            <span id="modal-fdate" class="modal-meta-txt"></span>
+            <span id="modal-fcat" class="modal-cat-badge"></span>
+          </div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeEditor()">✕</button>
+    </div>
+    <textarea id="editor" class="modal-editor" placeholder="เนื้อหาไฟล์..."></textarea>
+    <div id="modal-preview" class="modal-preview hidden"><img id="preview-img"/></div>
+    <div class="modal-actions">
+      <button class="tbtn tbtn-blue" onclick="saveFile()">💾 บันทึก</button>
+      <button class="tbtn tbtn-purple" onclick="renameCurrentFile()">✏️ เปลี่ยนชื่อ</button>
+      <button class="tbtn tbtn-gray" onclick="downloadCurrent()">⬇ โหลด</button>
+      <button class="tbtn tbtn-red" onclick="deleteFile()">🗑 ลบ</button>
+    </div>
+  </div>
+</div>
+
+<!-- MOVE MODAL -->
+<div class="modal-bg hidden" id="move-modal">
+  <div class="modal-sheet" style="max-height:60vh">
+    <div class="modal-handle"></div>
+    <div class="modal-head">
+      <div class="modal-head-info">
+        <span class="modal-ficon">↔</span>
+        <div>
+          <div class="modal-title">ย้าย / Copy ไฟล์</div>
+          <div class="modal-meta"><span id="move-fname" class="modal-meta-txt" style="font-weight:600"></span></div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeMoveModal()">✕</button>
+    </div>
+    <div style="padding:16px">
+      <div style="font-size:0.82rem;color:var(--t3);margin-bottom:8px">เลือก folder ปลายทาง:</div>
+      <select id="move-folder-select" class="move-select">
+        <option value="">📁 root</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="tbtn tbtn-blue" onclick="confirmMove(false)">↔ ย้าย</button>
+      <button class="tbtn tbtn-green" onclick="confirmMove(true)">📋 Copy</button>
+      <button class="tbtn tbtn-gray" onclick="closeMoveModal()">ยกเลิก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ZIP VIEWER MODAL -->
+<div class="modal-bg hidden" id="zip-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-head">
+      <div class="modal-head-info">
+        <span class="modal-ficon">🗜️</span>
+        <div>
+          <span id="zm-name" class="modal-title"></span>
+          <div class="modal-meta"><span id="zm-stats" class="modal-meta-txt"></span></div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeZipModal()">✕</button>
+    </div>
+    <div id="zm-body" class="modal-scroll"></div>
+    <div class="modal-actions">
+      <button class="tbtn tbtn-orange" onclick="dlModalZip()">⬇ ดาวน์โหลด</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROGRESS -->
+<div id="prog-ov" class="prog-ov hidden">
+  <div class="prog-inner">
+    <span id="prog-ico" class="prog-ico">↑</span>
+    <div style="flex:1;min-width:0">
+      <div id="prog-ttl" class="prog-ttl"></div>
+      <div id="prog-fname" class="prog-fname"></div>
+      <div class="prog-track"><div id="prog-bar" class="prog-bar"></div></div>
+    </div>
+    <span id="prog-pct" class="prog-pct">0%</span>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast hidden">
+  <span id="toast-ico" class="toast-ico">●</span>
+  <span id="toast-txt"></span>
+</div>
+
+<!-- DROP OVERLAY -->
+<div id="drop-ov" class="drop-ov hidden">
+  <div class="drop-inner">
+    <div style="font-size:3rem">📂</div>
+    <div style="font-size:1.1rem;font-weight:600;margin-top:8px">วางไฟล์ที่นี่</div>
+    <div style="font-size:0.8rem;opacity:0.7;margin-top:4px">อัปโหลดไปยัง: <span id="drop-folder-label">root</span></div>
+  </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox">
+  <div class="lb-top">
+    <span class="lb-name" id="lb-name"></span>
+    <button class="lb-close" onclick="closeLightbox()">✕</button>
+  </div>
+  <span class="lb-counter" id="lb-counter"></span>
+  <button class="lb-arrow lb-prev" id="lb-prev" onclick="lbNav(-1)">‹</button>
+  <img id="lightbox-img" src="" alt=""/>
+  <button class="lb-arrow lb-next" id="lb-next" onclick="lbNav(1)">›</button>
+  <div class="lb-bottom">
+    <span class="lb-size" id="lb-size"></span>
+    <button class="lb-btn lb-btn-dl" onclick="lbDownload()">⬇ ดาวน์โหลด</button>
+    <button class="lb-btn lb-btn-del" onclick="lbDelete()">🗑 ลบ</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="categories.js"></script>
+</body>
+</html>
