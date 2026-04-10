@@ -16,7 +16,7 @@ const IMAGE_EXTS = ['png','jpg','jpeg','gif','webp'];
 
 // ── State ──
 let currentCat    = 'all';
-let currentSort   = 'name';
+let currentSort   = 'name-asc';
 let viewMode      = 'grid';
 let allFiles      = [];
 let zipStore      = {};
@@ -251,6 +251,11 @@ function updateCounts() {
   const c={all:0,image:0,code:0,doc:0,zip:0,other:0};
   allFiles.forEach(f=>{ const cat=getFileCat(f.name); c[cat]=(c[cat]||0)+1; c.all++; });
   Object.keys(c).forEach(cat=>{ const el=document.getElementById('cnt-'+cat); if(el) el.textContent=c[cat]; });
+  // Update dual panel stats
+  const countEl=document.getElementById('dp-file-count');
+  const sizeEl=document.getElementById('dp-total-size');
+  if(countEl) countEl.textContent=allFiles.length+' ไฟล์';
+  if(sizeEl) { const total=allFiles.reduce((s,f)=>s+(f.size||0),0); sizeEl.textContent=hSize(total); }
 }
 
 // ══════════════════════════════════════════════
@@ -265,9 +270,12 @@ function getFilteredFiles() {
   let files = currentCat==='all' ? allFiles : allFiles.filter(f=>getFileCat(f.name)===currentCat);
   if (q) files = files.filter(f=>f.name.toLowerCase().includes(q));
   return [...files].sort((a,b)=>{
-    if (currentSort==='name') return a.name.localeCompare(b.name,'th');
-    if (currentSort==='date') return new Date(b.modified)-new Date(a.modified);
-    if (currentSort==='size') return b.size-a.size;
+    if (currentSort==='name-asc')  return a.name.localeCompare(b.name,'th');
+    if (currentSort==='name-desc') return b.name.localeCompare(a.name,'th');
+    if (currentSort==='date-asc')  return new Date(a.modified)-new Date(b.modified);
+    if (currentSort==='date-desc') return new Date(b.modified)-new Date(a.modified);
+    if (currentSort==='size-asc')  return (a.size||0)-(b.size||0);
+    if (currentSort==='size-desc') return (b.size||0)-(a.size||0);
     return 0;
   });
 }
@@ -754,4 +762,22 @@ async function apiFetch(url,opts={}){
   const options={method:opts.method||'GET',headers:{...(opts.body?{'Content-Type':'application/json'}:{})}};
   if(opts.body) options.body=JSON.stringify(opts.body);
   const r=await fetch(API+url,options); return r.json();
+}
+
+// ══════════════════════════════════════════════
+// DUAL PANEL DROP ZONE HELPERS
+// ══════════════════════════════════════════════
+function dpDragOver(e) {
+  e.preventDefault();
+  document.getElementById('dp-drop-zone')?.classList.add('drag-active');
+}
+function dpDragLeave(e) {
+  document.getElementById('dp-drop-zone')?.classList.remove('drag-active');
+}
+function dpDrop(e) {
+  e.preventDefault();
+  document.getElementById('dp-drop-zone')?.classList.remove('drag-active');
+  if (e.dataTransfer.files?.length) {
+    handleUpload({ files: Array.from(e.dataTransfer.files) });
+  }
 }

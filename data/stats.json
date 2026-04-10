@@ -1,7 +1,9 @@
 {
-  "requests": 2219,
-  "uploads": 17,
-  "downloads": 1469,
+  "requests": 2353,
+  "uploads": 23,
+  "downloads": 1573,
   "deletes": 5,
-  "errors": 23
+  "errors": 23,
+  "r2_uploads": 3,
+  "r2_downloads": 98
 }
