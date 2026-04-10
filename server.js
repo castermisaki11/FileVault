@@ -184,56 +184,80 @@ app.get('/api/stats',(req,res)=>res.json({ok:true,stats,storage:getStorageInfo()
 app.post('/api/stats/reset',(req,res)=>{Object.assign(stats,{requests:0,uploads:0,downloads:0,deletes:0,errors:0,moves:0,r2_uploads:0,r2_downloads:0,r2_deletes:0});res.json({ok:true});});
 
 // FOLDERS
-app.get('/api/folders',(req,res)=>{
-  try{res.json({ok:true,folders:getFolderList()});}catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-app.post('/api/folders',(req,res)=>{
+app.get('/api/folders', async (req,res)=>{
   try {
-    const name=req.body?.name||req.query.name; if(!name) return res.status(400).json({ok:false,error:'ต้องระบุชื่อ'});
-    const fp=safeFolderPath(name); ensureFolder(fp);
-    res.json({ok:true,path:path.relative(UPLOAD_DIR,fp)});
+    const result = await r2.listObjects('');
+    const folders = result.folders.map(f=>({ path:f.name, name:f.name, fileCount:0, size:0 }));
+    res.json({ok:true, folders});
   } catch(e){res.status(500).json({ok:false,error:e.message});}
 });
-app.delete('/api/folders', (req,res) => {
+app.post('/api/folders', async (req,res)=>{
   try {
     const name=req.body?.name||req.query.name; if(!name) return res.status(400).json({ok:false,error:'ต้องระบุชื่อ'});
-    const fp=safeFolderPath(name); if(fp===UPLOAD_DIR) return res.status(400).json({ok:false,error:'ไม่สามารถลบ root ได้'});
-    if(!fs.existsSync(fp)) return res.status(404).json({ok:false,error:'ไม่พบ folder'});
-    fs.rmSync(fp,{recursive:true,force:true}); stats.deletes++;
-    res.json({ok:true});
+    const key = name.replace(/\/?$/,'/')+'.keep';
+    await r2.uploadObject(key, Buffer.from(''), 'text/plain');
+    res.json({ok:true, path:name});
+  } catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+app.delete('/api/folders', async (req,res) => {
+  try {
+    const name=req.body?.name||req.query.name; if(!name) return res.status(400).json({ok:false,error:'ต้องระบุชื่อ'});
+    const prefix = name.replace(/\/?$/,'/');
+    let token, deleted=0;
+    do {
+      const params={Bucket:r2.R2_CONFIG.BUCKET, Prefix:prefix, MaxKeys:1000};
+      const {S3Client,ListObjectsV2Command,DeleteObjectCommand}=require('@aws-sdk/client-s3');
+      // ใช้ r2 searchObjects แทน
+      const files = await r2.searchObjects('');
+      const toDelete = files.filter(f=>f.key.startsWith(prefix));
+      for(const f of toDelete){ await r2.deleteObject(f.key); deleted++; }
+      token=null;
+    } while(token);
+    stats.deletes++; res.json({ok:true, deleted});
   } catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 
 // FILES LIST
-app.get('/api/files', (req,res) => {
+app.get('/api/files', async (req,res) => {
   try {
-    const folder=req.query.folder||'', dir=safeFolderPath(folder);
-    if(!fs.existsSync(dir)) return res.status(404).json({ok:false,error:'ไม่พบ folder'});
-    const items=fs.readdirSync(dir,{withFileTypes:true}).map(e=>{
-      const fp=path.join(dir,e.name), st=fs.statSync(fp), isDir=e.isDirectory();
-      const r={name:e.name,size:st.size,modified:st.mtimeMs,isDir,folder:folder||''};
-      if(isDir){const ds=getDirStats(fp);r.fileCount=ds.fileCount;r.dirSize=ds.size;}
-      return r;
-    });
-    res.json({ok:true,files:items,folder:folder||'',storage:getStorageInfo()});
+    const folder=req.query.folder||'';
+    const prefix = folder ? folder.replace(/\/?$/,'/') : '';
+    const result = await r2.listObjects(prefix);
+    const files = result.files.map(f=>({
+      name: f.name,
+      size: f.size,
+      modified: new Date(f.modified).getTime(),
+      isDir: false,
+      folder: folder||'',
+      key: f.key,
+      publicUrl: f.publicUrl,
+    }));
+    const folders = result.folders.map(f=>({
+      name: f.name,
+      isDir: true,
+      folder: folder||'',
+      key: f.key,
+      fileCount: 0,
+      dirSize: 0,
+    }));
+    res.json({ok:true, files:[...folders,...files], folder:folder||'', storage:getStorageInfo()});
   } catch(e){stats.errors++;res.status(500).json({ok:false,error:e.message});}
 });
 
 // SEARCH
-app.get('/api/search', (req,res) => {
+app.get('/api/search', async (req,res) => {
   try {
     const q=(req.query.q||'').toLowerCase().trim();
     if(!q) return res.json({ok:true,files:[]});
-    const results=[];
-    const walk=(dir,rel)=>{
-      try{for(const e of fs.readdirSync(dir,{withFileTypes:true})){
-        const fp=path.join(dir,e.name);
-        if(e.isDirectory()) walk(fp,rel?rel+'/'+e.name:e.name);
-        else if(e.name.toLowerCase().includes(q)){const st=fs.statSync(fp);results.push({name:e.name,size:st.size,modified:st.mtimeMs,isDir:false,folder:rel});}
-      }}catch{}
-    };
-    walk(UPLOAD_DIR,'');
-    res.json({ok:true,files:results,query:q});
+    const files = await r2.searchObjects(q);
+    res.json({ok:true, files: files.map(f=>({
+      name: f.name,
+      size: f.size,
+      modified: new Date(f.modified).getTime(),
+      isDir: false,
+      folder: f.folder||'',
+      key: f.key,
+    })), query:q});
   } catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 
