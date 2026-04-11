@@ -257,6 +257,16 @@ client.on(Events.MessageCreate, async (msg) => {
     try {
       await msg.react("☁");
     } catch {}
+
+    // 🗑 ลบรูปใน Discord หลัง upload R2 เสร็จ ภายใน 10 วินาที
+    setTimeout(async () => {
+      try {
+        await msg.delete();
+        console.log(`🗑 ลบรูปใน Discord แล้ว (message: ${msg.id})`);
+      } catch (e) {
+        console.error(`❌ ลบ message ไม่ได้: ${e.message}`);
+      }
+    }, 10_000);
   }
 });
 

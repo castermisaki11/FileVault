@@ -217,18 +217,28 @@ function renderFolderSidebar() {
 
     wrap.appendChild(item);
 
-    // Thumbnail strip below active folder
-    if (isActive) {
-      const imgs = allFiles.filter(x => isRealImage(x.name));
-      if (imgs.length) {
-        const strip = document.createElement('div');
-        strip.className = 'sb-thumb-strip';
+    // Thumbnail strip — fetch images for this folder asynchronously
+    const strip = document.createElement('div');
+    strip.className = 'sb-thumb-strip sb-thumb-loading';
+    strip.innerHTML = '<span style="color:var(--t4);font-size:0.7rem;padding:4px">...</span>';
+    wrap.appendChild(strip);
+
+    // Async: load images for this folder and render strip
+    (async () => {
+      try {
+        const qs = f.path ? '?folder=' + encodeURIComponent(f.path) : '';
+        const d = await apiFetch('/api/files' + qs);
+        if (!d.ok) { strip.remove(); return; }
+        const imgs = (d.files || []).filter(x => !x.isDir && isRealImage(x.name));
+        strip.innerHTML = '';
+        strip.classList.remove('sb-thumb-loading');
+        if (!imgs.length) { strip.remove(); return; }
         const visible = imgs.slice(0, 5);
         visible.forEach(img => {
           const t = document.createElement('div');
           t.className = 'sb-thumb';
           t.title = img.name;
-          t.style.backgroundImage = 'url(' + API + '/api/download/' + encodeURIComponent(img.name) + folderQs(f.path) + ')';
+          t.style.backgroundImage = 'url(' + API + '/api/download/' + encodeURIComponent(img.name) + '?folder=' + encodeURIComponent(f.path) + ')';
           t.onclick = e => { e.stopPropagation(); openLightbox(img.name, imgs); };
           strip.appendChild(t);
         });
@@ -236,12 +246,11 @@ function renderFolderSidebar() {
           const more = document.createElement('div');
           more.className = 'sb-thumb sb-thumb-more';
           more.textContent = '+' + (imgs.length - 5);
-          more.onclick = e => { e.stopPropagation(); setCategory(document.querySelector('[data-cat="image"]'), 'image'); };
+          more.onclick = e => { e.stopPropagation(); navigateFolder(f.path); };
           strip.appendChild(more);
         }
-        wrap.appendChild(strip);
-      }
-    }
+      } catch { strip.remove(); }
+    })();
 
     sb.appendChild(wrap);
   });
@@ -1087,7 +1096,18 @@ async function apiFetch(url,opts={}){
 // ── Folder Lock System ──
 
 async function loadLocks() {
-  try { const d=await fetch('/api/lock'); const j=await d.json(); if(j.ok) lockedFoldersList=j.locks||[]; } catch{}
+  try { const d=await fetch('/api/lock'); const j=await d.json(); if(j.ok) {
+    lockedFoldersList=j.locks||[];
+    // ข้อ 4: ถ้า folder ที่อยู่ปัจจุบันถูก lock และไม่มี pin → ไล่ออกทันที
+    if (currentFolder && isFolderLocked(currentFolder) && !isFolderUnlocked(currentFolder)) {
+      toast('🔒 folder นี้ถูกล็อคแล้ว', true);
+      currentFolder = '';
+      localStorage.setItem('fv-folder', '');
+      updateBreadcrumb();
+      renderFolderSidebar();
+      await loadFiles();
+    }
+  }} catch{}
 }
 
 function isFolderLocked(folder) { return lockedFoldersList.some(l=>l.folder===folder); }
@@ -1176,11 +1196,12 @@ async function confirmLockSettings() {
   if (!pin || pin.length < 4) { errEl.textContent='รหัสต้องมีอย่างน้อย 4 ตัว'; errEl.classList.remove('hidden'); return; }
   const d = await fetch('/api/lock', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({folder, pin, hint})}).then(r=>r.json());
   if (d.ok) {
-    unlockedFolders[folder] = pin;
+    unlockedFolders[folder] = pin; // ยังให้ access อยู่เพราะเพิ่ง set pin เอง
     await loadLocks();
-    renderFolders();
+    renderFolderSidebar();
     closeLockSettings();
-    toast('🔒 ตั้งรหัสแล้ว');
+    toast('🔒 ล็อค folder "' + folder.split('/').pop() + '" แล้ว');
+    if (currentFolder === folder) await loadFiles();
   } else { errEl.textContent=d.error||'เกิดข้อผิดพลาด'; errEl.classList.remove('hidden'); }
 }
 
@@ -1199,11 +1220,13 @@ async function confirmRemoveLock() {
   errEl.classList.add('hidden');
   const d = await fetch('/api/lock', {method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({folder, pin})}).then(r=>r.json());
   if (d.ok) {
+    // ลบ pin ออกจาก session cache
     delete unlockedFolders[folder];
     await loadLocks();
-    renderFolders();
+    renderFolderSidebar();
     closeLockSettings();
-    toast('🔓 ถอดล็อคแล้ว');
+    toast('🔓 ถอดล็อค folder "' + folder.split('/').pop() + '" แล้ว');
+    if (currentFolder === folder) await loadFiles();
   } else { errEl.textContent=d.error||'รหัสไม่ถูกต้อง'; errEl.classList.remove('hidden'); }
 }
 
