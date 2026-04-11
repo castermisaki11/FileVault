@@ -302,12 +302,43 @@ client.on(Events.MessageCreate, async (msg) => {
     return;
   }
 
+  // ── !locks ──
+  if (cmd === '!locks') {
+    if (!isAdmin(msg.author.id)) {
+      const reply = await msg.reply('❌ คุณไม่มีสิทธิ์').catch(() => null);
+      deleteAfter(msg, 5_000);
+      if (reply) deleteAfter(reply, 5_000);
+      return;
+    }
+    try {
+      const fp = nodePath.join(__dirname, 'data', 'folder-locks.json');
+      if (!nodeFs.existsSync(fp)) {
+        const reply = await msg.reply('📂 ยังไม่มี folder lock').catch(() => null);
+        deleteAfter(msg, 10_000);
+        if (reply) deleteAfter(reply, 10_000);
+        return;
+      }
+      const reply = await msg.reply({
+        content: '🔒 **folder-locks.json** (ลบข้อความนี้หลังบันทึกแล้วนะ)',
+        files: [{ attachment: fp, name: 'folder-locks.json' }],
+      }).catch(() => null);
+      deleteAfter(msg, 20_000);
+      if (reply) deleteAfter(reply, 20_000);
+    } catch (e) {
+      const reply = await msg.reply('❌ Error: ' + e.message).catch(() => null);
+      deleteAfter(msg, 10_000);
+      if (reply) deleteAfter(reply, 10_000);
+    }
+    return;
+  }
+
   // ── !help ──
   if (cmd === '!help') {
     const reply = await msg.reply([
       '**📋 FileVault Bot Commands**',
       '`!shutdown` — ปิด server',
       '`!status`   — ดูสถานะ server',
+      '`!locks`    — ดาวน์โหลด folder-locks.json',
       '`!help`     — แสดง commands',
     ].join('\n')).catch(() => null);
     deleteAfter(msg, 15_000);        // ลบคำสั่งหลัง 1 นาที

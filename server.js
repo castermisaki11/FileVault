@@ -446,7 +446,7 @@ app.post('/api/upload', checkStorageLimit, upload.array('files'), async (req,res
   }
   stats.uploads+=req.files.length;
   const folder = req.query.folder||'';
-  const r2Folder = folder || (process.env.FV_DEFAULT_FOLDER || 'cloud');
+  const r2Folder = folder || (process.env.FV_DEFAULT_FOLDER || 'upload/cloud');
   for (const f of req.files) {
     try {
       const key = `${r2Folder}/${f.filename}`;
