@@ -1298,3 +1298,392 @@ body.dark .theme-panel { background: #2c2c2e; border-color: rgba(255,255,255,0.1
 
 /* ── Sort bar flex adjustment ── */
 .sort-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* ═══════════════════════════════════════════════
+   SIDEBAR v2 — sb-* components
+   ═══════════════════════════════════════════════ */
+
+.folder-sidebar-wrap {
+  width: 220px;
+  min-width: 180px;
+  max-width: 240px;
+  background: var(--surface);
+  border-right: 1.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 8px 0 12px;
+  flex-shrink: 0;
+}
+
+/* ── Sidebar item ── */
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px 7px 12px;
+  cursor: pointer;
+  border-radius: 9px;
+  margin: 1px 6px;
+  font-size: 0.83rem;
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background 0.12s;
+  position: relative;
+}
+.sb-item:hover { background: var(--bg); }
+.sb-item.active {
+  background: var(--blue-light);
+  color: var(--blue);
+  font-weight: 600;
+}
+.sb-item.drag-over {
+  outline: 2px solid var(--blue);
+  background: var(--blue-light);
+}
+.sb-ico  { font-size: 0.95rem; flex-shrink: 0; }
+.sb-lbl  { flex: 1; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sb-spacer { flex: 1; }
+
+/* ── Lock pill ── */
+.sb-lock-pill {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 20px;
+  background: #ff6b6b22;
+  color: #e55;
+  flex-shrink: 0;
+  line-height: 1.6;
+}
+.sb-lock-pill.unlocked {
+  background: #00b89422;
+  color: #00b894;
+}
+
+/* ── File-count badge ── */
+.sb-badge {
+  font-size: 0.62rem;
+  background: var(--blue-light);
+  color: var(--blue);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Action buttons (right side) ── */
+.sb-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.sb-item:hover .sb-actions { opacity: 1; }
+.sb-act-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+  padding: 0;
+}
+.sb-act-btn:hover { background: var(--border); }
+.sb-act-del:hover { background: #ff6b6b22 !important; }
+
+/* ── Folder wrap (item + thumbnail strip) ── */
+.sb-folder-wrap { display: flex; flex-direction: column; }
+
+/* ── Thumbnail strip ── */
+.sb-thumb-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 4px 10px 6px 24px;
+  animation: fadeIn 0.2s ease;
+}
+.sb-thumb {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg);
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+  overflow: hidden;
+}
+.sb-thumb:hover { transform: scale(1.06); opacity: 0.9; }
+.sb-thumb-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--blue);
+  background: var(--blue-light) !important;
+  border: 1.5px dashed var(--blue);
+  cursor: pointer;
+}
+.sb-thumb-more:hover { background: var(--blue-light) !important; opacity: 1; transform: none; }
+
+/* ── Add folder row ── */
+.sb-add-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 2px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.sb-add-inp {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 0.78rem;
+  font-family: var(--font);
+  min-width: 0;
+  outline: none;
+  transition: border 0.15s;
+}
+.sb-add-inp:focus { border-color: var(--blue); }
+.sb-add-btn {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: var(--blue);
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.15s;
+}
+.sb-add-btn:hover { opacity: 0.85; }
+
+/* mobile */
+@media (max-width: 600px) {
+  .sb-thumb-strip { display: none; }
+  .sb-actions { opacity: 1; }
+  .sb-badge, .sb-lock-pill { display: none; }
+}
+
+/* ═══════════════════════════════════════════════
+   fv-card MODALS — Lock / Rename
+   ═══════════════════════════════════════════════ */
+
+.fv-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  max-width: 340px;
+  width: calc(100vw - 48px);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.18);
+  animation: fvCardIn 0.22s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes fvCardIn {
+  from { opacity: 0; transform: scale(0.92) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.fv-card-sm { max-width: 320px; }
+
+.fv-card-close {
+  position: absolute;
+  top: 14px; right: 14px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  width: 28px; height: 28px;
+  font-size: 0.75rem;
+  color: var(--t3);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.fv-card-close:hover { background: var(--border); color: var(--t1); }
+
+.fv-card-icon {
+  font-size: 2.4rem;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+.fv-card-icon-lock {
+  background: linear-gradient(135deg, #6366f122 0%, #8b5cf622 100%);
+  border-radius: 50%;
+  width: 64px; height: 64px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem;
+  margin-bottom: 14px;
+}
+
+.fv-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--t1);
+  text-align: center;
+  margin-bottom: 4px;
+}
+.fv-card-sub {
+  font-size: 0.78rem;
+  color: var(--t3);
+  text-align: center;
+  margin-bottom: 18px;
+  word-break: break-all;
+}
+
+/* ── Hint box ── */
+.fv-hint {
+  width: 100%;
+  background: #6366f111;
+  border: 1px solid #6366f133;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  color: var(--blue);
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+/* ── Pin field ── */
+.fv-pin-field {
+  position: relative;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.fv-pin-input {
+  width: 100%;
+  padding: 13px 44px 13px 16px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 1.1rem;
+  font-family: var(--font);
+  letter-spacing: 4px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+  text-align: center;
+}
+.fv-pin-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.fv-pin-eye {
+  position: absolute;
+  right: 12px; top: 50%;
+  transform: translateY(-50%);
+  background: none; border: none;
+  cursor: pointer; font-size: 1rem;
+  color: var(--t3); padding: 4px;
+  transition: color 0.15s;
+}
+.fv-pin-eye:hover { color: var(--t1); }
+
+/* ── Text input ── */
+.fv-text-input {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 0.9rem;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+.fv-text-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.fv-text-input-lg {
+  font-size: 1rem;
+  padding: 13px 16px;
+}
+
+/* ── Field label ── */
+.fv-field-label {
+  width: 100%;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--t3);
+  margin-bottom: 6px;
+}
+
+/* ── Error msg ── */
+.fv-err {
+  width: 100%;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #e55;
+  background: #ff6b6b11;
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  animation: fvShake 0.3s ease;
+}
+@keyframes fvShake {
+  0%,100%{transform:translateX(0)}
+  25%{transform:translateX(-5px)}
+  75%{transform:translateX(5px)}
+}
+
+/* ── Buttons ── */
+.fv-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.fv-btn:active { transform: scale(0.98); }
+.fv-btn-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+}
+.fv-btn-primary:hover { opacity: 0.9; }
+.fv-btn-danger {
+  background: #ff6b6b22;
+  color: #e55;
+  border: 1.5px solid #ff6b6b44;
+}
+.fv-btn-danger:hover { background: #ff6b6b33; }
+.fv-btn-ghost {
+  background: transparent;
+  color: var(--t3);
+  border: 1.5px solid var(--border);
+}
+.fv-btn-ghost:hover { background: var(--bg); color: var(--t2); }
+
+/* dark mode tweaks for fv-card */
+body.dark .fv-card {
+  box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+}
+body.dark .fv-pin-input { background: #0f1117; }
+body.dark .fv-text-input { background: #0f1117; }

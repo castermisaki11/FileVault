@@ -147,64 +147,108 @@ function renderFolderSidebar() {
   if (!sb) return;
   sb.innerHTML = '';
 
-  const folderIcons = { photos:'🖼️',images:'🖼️',photo:'🖼️',files:'📁',docs:'📄',documents:'📄',videos:'🎥',music:'🎵',backup:'💾',code:'💻',downloads:'📥',archive:'📦' };
+  const folderIcons = { photos:'🖼',images:'🖼',photo:'🖼',files:'📁',docs:'📄',documents:'📄',videos:'🎬',music:'🎵',backup:'💾',code:'💻',downloads:'📥',archive:'📦','discord-images':'💬' };
 
-  const mkItem = (label, icon, folder, active, badge) => {
-    const div = document.createElement('div');
-    div.className = 'folder-item' + (active?' active':'');
-    div.setAttribute('data-folder', folder);
-    div.innerHTML = `<span class="folder-ico">${icon}</span><span class="folder-lbl">${esc(label)}</span>${badge?`<span class="folder-badge">${badge}</span>`:''}`;
-    div.onclick = () => navigateFolder(folder);
-    // drag-over highlight
-    div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
-    div.addEventListener('dragleave', () => div.classList.remove('drag-over'));
-    div.addEventListener('drop', e => { e.preventDefault(); div.classList.remove('drag-over'); handleDropToFolder(e, folder); });
-    return div;
-  };
+  // Root item
+  const rootItem = document.createElement('div');
+  rootItem.className = 'sb-item' + (currentFolder==='' ? ' active' : '');
+  rootItem.innerHTML = '<span class="sb-ico">🏠</span><span class="sb-lbl">ทั้งหมด</span>';
+  rootItem.onclick = () => navigateFolder('');
+  rootItem.addEventListener('dragover', e => { e.preventDefault(); rootItem.classList.add('drag-over'); });
+  rootItem.addEventListener('dragleave', () => rootItem.classList.remove('drag-over'));
+  rootItem.addEventListener('drop', e => { e.preventDefault(); rootItem.classList.remove('drag-over'); handleDropToFolder(e, ''); });
+  sb.appendChild(rootItem);
 
-  // Root
-  sb.appendChild(mkItem('ทั้งหมด','🏠','', currentFolder==='', null));
-
-  // Folders tree
   allFolders.forEach(f => {
     const depth = f.path.split('/').length - 1;
-    const icon  = folderIcons[f.name.toLowerCase()]||'📂';
+    const icon  = folderIcons[f.name.toLowerCase()] || '📂';
     const locked = isFolderLocked(f.path);
     const unlocked = isFolderUnlocked(f.path);
-    const lockIcon = locked ? (unlocked ? ' 🔓' : ' 🔒') : '';
-    const item  = mkItem(f.name + lockIcon, icon, f.path, currentFolder===f.path, f.fileCount||null);
-    item.style.paddingLeft = (12 + depth*14) + 'px';
-    // intercept click to require unlock
+    const isActive = currentFolder === f.path;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'sb-folder-wrap';
+
+    const item = document.createElement('div');
+    item.className = 'sb-item' + (isActive ? ' active' : '');
+    item.setAttribute('data-folder', f.path);
+    item.style.paddingLeft = (10 + depth * 12) + 'px';
+
+    const lockPill = locked
+      ? '<span class="sb-lock-pill ' + (unlocked ? 'unlocked' : '') + '">' + (unlocked ? '🔓' : '🔒') + '</span>'
+      : '';
+    const badge = f.fileCount ? '<span class="sb-badge">' + f.fileCount + '</span>' : '';
+
+    item.innerHTML = '<span class="sb-ico">' + icon + '</span><span class="sb-lbl">' + esc(f.name) + '</span>' + lockPill + badge + '<span class="sb-spacer"></span>';
+
+    const actions = document.createElement('div');
+    actions.className = 'sb-actions';
+
+    const lockActBtn = document.createElement('button');
+    lockActBtn.className = 'sb-act-btn sb-act-lock';
+    lockActBtn.title = locked ? 'จัดการรหัส' : 'ตั้งรหัส';
+    lockActBtn.textContent = locked ? '🔐' : '🔒';
+    lockActBtn.onclick = e => { e.stopPropagation(); openLockSettings(f.path); };
+
+    const renActBtn = document.createElement('button');
+    renActBtn.className = 'sb-act-btn sb-act-ren';
+    renActBtn.title = 'เปลี่ยนชื่อ';
+    renActBtn.textContent = '✏️';
+    renActBtn.onclick = e => { e.stopPropagation(); openRenameFolderModal(f.path, f.name); };
+
+    const delActBtn = document.createElement('button');
+    delActBtn.className = 'sb-act-btn sb-act-del';
+    delActBtn.title = 'ลบ folder';
+    delActBtn.textContent = '🗑';
+    delActBtn.onclick = e => { e.stopPropagation(); deleteFolder(f.path, f.fileCount); };
+
+    actions.appendChild(lockActBtn);
+    actions.appendChild(renActBtn);
+    actions.appendChild(delActBtn);
+    item.appendChild(actions);
+
     item.onclick = e => {
-      if (locked && !unlocked) { requireUnlock(f.path, () => navigateFolder(f.path)); }
+      if (locked && !unlocked) requireUnlock(f.path, () => navigateFolder(f.path));
       else navigateFolder(f.path);
     };
+    item.addEventListener('dragover', e => { e.preventDefault(); item.classList.add('drag-over'); });
+    item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+    item.addEventListener('drop', e => { e.preventDefault(); item.classList.remove('drag-over'); handleDropToFolder(e, f.path); });
 
-    // Lock button
-    const lockBtn = document.createElement('button');
-    lockBtn.className = 'folder-action-btn'; lockBtn.title = locked ? 'จัดการรหัส' : 'ตั้งรหัส'; lockBtn.textContent = locked ? '🔐' : '🔒';
-    lockBtn.onclick = e => { e.stopPropagation(); openLockSettings(f.path); };
-    item.appendChild(lockBtn);
+    wrap.appendChild(item);
 
-    // Rename button
-    const renBtn = document.createElement('button');
-    renBtn.className = 'folder-action-btn'; renBtn.title = 'เปลี่ยนชื่อ'; renBtn.textContent = '✏️';
-    renBtn.onclick = e => { e.stopPropagation(); promptRenameFolder(f.path, f.name); };
-    item.appendChild(renBtn);
+    // Thumbnail strip below active folder
+    if (isActive) {
+      const imgs = allFiles.filter(x => isRealImage(x.name));
+      if (imgs.length) {
+        const strip = document.createElement('div');
+        strip.className = 'sb-thumb-strip';
+        const visible = imgs.slice(0, 5);
+        visible.forEach(img => {
+          const t = document.createElement('div');
+          t.className = 'sb-thumb';
+          t.title = img.name;
+          t.style.backgroundImage = 'url(' + API + '/api/download/' + encodeURIComponent(img.name) + folderQs(f.path) + ')';
+          t.onclick = e => { e.stopPropagation(); openLightbox(img.name, imgs); };
+          strip.appendChild(t);
+        });
+        if (imgs.length > 5) {
+          const more = document.createElement('div');
+          more.className = 'sb-thumb sb-thumb-more';
+          more.textContent = '+' + (imgs.length - 5);
+          more.onclick = e => { e.stopPropagation(); setCategory(document.querySelector('[data-cat="image"]'), 'image'); };
+          strip.appendChild(more);
+        }
+        wrap.appendChild(strip);
+      }
+    }
 
-    // Delete button
-    const delBtn = document.createElement('button');
-    delBtn.className = 'folder-action-btn del'; delBtn.title = 'ลบ folder'; delBtn.textContent = '🗑';
-    delBtn.onclick = e => { e.stopPropagation(); deleteFolder(f.path, f.fileCount); };
-    item.appendChild(delBtn);
-
-    sb.appendChild(item);
+    sb.appendChild(wrap);
   });
 
-  // Add folder input row
   const addDiv = document.createElement('div');
-  addDiv.className = 'folder-add-row';
-  addDiv.innerHTML = `<input class="folder-add-inp" id="new-folder-inp" placeholder="folder ใหม่..." onkeydown="if(event.key==='Enter')createFolder()"/><button class="folder-add-btn" onclick="createFolder()" title="สร้าง folder">+</button>`;
+  addDiv.className = 'sb-add-row';
+  addDiv.innerHTML = '<input class="sb-add-inp" id="new-folder-inp" placeholder="\uD83D\uDCC1 folder \u0E43\u0E2B\u0E21\u0E48..." onkeydown="if(event.key===\'Enter\')createFolder()"/><button class="sb-add-btn" onclick="createFolder()" title="\u0E2A\u0E23\u0E49\u0E32\u0E07">\uff0b</button>';
   sb.appendChild(addDiv);
 }
 
@@ -248,6 +292,45 @@ async function createFolder() {
   const d = await apiFetch('/api/folders', {method:'POST', body:{name:fullName}});
   if (d.ok) { inp.value=''; toast('📂 สร้าง: '+name); await loadFolders(); }
   else toast('⚠ '+d.error, true);
+}
+
+function openRenameFolderModal(folderPath, oldName) {
+  const modal = document.getElementById('rename-folder-modal');
+  const inp = document.getElementById('rename-folder-inp');
+  document.getElementById('rename-folder-target').textContent = oldName;
+  inp.value = oldName;
+  modal.dataset.folderPath = folderPath;
+  modal.dataset.oldName = oldName;
+  modal.classList.remove('hidden');
+  setTimeout(() => { inp.focus(); inp.select(); }, 80);
+}
+
+function closeRenameFolderModal() {
+  document.getElementById('rename-folder-modal').classList.add('hidden');
+}
+
+async function confirmRenameFolder() {
+  const modal = document.getElementById('rename-folder-modal');
+  const folderPath = modal.dataset.folderPath;
+  const oldName = modal.dataset.oldName;
+  const newName = document.getElementById('rename-folder-inp').value.trim();
+  const errEl = document.getElementById('rename-folder-error');
+  errEl.classList.add('hidden');
+  if (!newName || newName === oldName) { closeRenameFolderModal(); return; }
+  const d = await apiFetch('/api/folders', {method:'PATCH', body:{from:folderPath, to:newName}});
+  if (d.ok) {
+    if (currentFolder===folderPath || currentFolder.startsWith(folderPath+'/')) {
+      currentFolder = d.folder;
+      localStorage.setItem('fv-folder', currentFolder);
+      updateBreadcrumb();
+    }
+    closeRenameFolderModal();
+    toast('✏️ เปลี่ยนชื่อแล้ว');
+    await loadFolders(); await loadFiles();
+  } else {
+    errEl.textContent = d.error || 'เกิดข้อผิดพลาด';
+    errEl.classList.remove('hidden');
+  }
 }
 
 async function promptRenameFolder(folderPath, oldName) {
@@ -1021,7 +1104,7 @@ function requireUnlock(folder, onSuccess) {
   if (lock?.hint) { hint.textContent = '💡 Hint: '+lock.hint; hint.classList.remove('hidden'); }
   else hint.classList.add('hidden');
   document.getElementById('lock-modal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('lock-pin-input').focus(), 100);
+  setTimeout(()=>{ const inp=document.getElementById('lock-pin-input'); if(inp){inp.focus();inp.value='';} }, 100);
 }
 
 async function submitLockPin() {
@@ -1049,29 +1132,39 @@ function closeLockModal() {
 
 function togglePinEye() {
   const inp = document.getElementById('lock-pin-input');
+  const btn = document.getElementById('pin-eye-btn');
   inp.type = inp.type==='password' ? 'text' : 'password';
+  btn.textContent = inp.type==='password' ? '👁' : '🙈';
 }
 
 async function openLockSettings(folder) {
   lockSettingsTarget = folder;
-  document.getElementById('lset-folder-name').textContent = '📂 '+folder;
   const isLocked = isFolderLocked(folder);
+  const folderShort = folder.split('/').pop();
+
   document.getElementById('lset-icon').textContent = isLocked ? '🔐' : '🔒';
-  document.getElementById('lset-title').textContent = isLocked ? 'จัดการรหัส Folder' : 'ตั้งรหัส Folder';
+  document.getElementById('lset-title').textContent = isLocked ? 'จัดการรหัส' : 'ตั้งรหัส Folder';
+  document.getElementById('lset-folder-name').textContent = '📂 ' + folder;
+
+  // Reset to clean state
   document.getElementById('lset-set').classList.toggle('hidden', isLocked);
   document.getElementById('lset-remove').classList.toggle('hidden', !isLocked);
-  document.getElementById('lset-confirm-btn').disabled = isLocked;
-  document.getElementById('lset-confirm-btn').textContent = isLocked ? '— ถอดล็อคก่อนเพื่อตั้งรหัสใหม่' : '🔒 ตั้งรหัส';
+  document.getElementById('lset-confirm-btn').classList.toggle('hidden', isLocked);
   document.getElementById('lset-remove-btn').classList.toggle('hidden', !isLocked);
-  document.getElementById('lset-error').classList.add('hidden');
-  document.getElementById('lset-pin').value='';
-  document.getElementById('lset-hint').value='';
-  document.getElementById('lset-old-pin').value='';
-  // reset remove btn
-  document.getElementById('lset-remove-btn').textContent='🔓 ถอดล็อค';
+  document.getElementById('lset-remove-btn').textContent = 'ถอดล็อค';
   document.getElementById('lset-remove-btn').onclick = openRemoveLock;
-  document.getElementById('lset-confirm-btn').classList.remove('hidden');
+  document.getElementById('lset-error').classList.add('hidden');
+  document.getElementById('lset-pin').value = '';
+  document.getElementById('lset-hint').value = '';
+  document.getElementById('lset-old-pin').value = '';
+
   document.getElementById('lock-settings-modal').classList.remove('hidden');
+  setTimeout(() => {
+    const inp = isLocked
+      ? document.getElementById('lset-old-pin')
+      : document.getElementById('lset-pin');
+    inp?.focus();
+  }, 80);
 }
 
 async function confirmLockSettings() {
@@ -1116,5 +1209,11 @@ async function confirmRemoveLock() {
 
 function closeLockSettings() {
   document.getElementById('lock-settings-modal').classList.add('hidden');
+  // reset to set-lock view
+  document.getElementById('lset-set').classList.remove('hidden');
+  document.getElementById('lset-remove').classList.add('hidden');
+  document.getElementById('lset-confirm-btn').classList.remove('hidden');
+  document.getElementById('lset-remove-btn').classList.add('hidden');
+  document.getElementById('lset-error').classList.add('hidden');
   lockSettingsTarget = null;
 }
