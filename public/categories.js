@@ -224,8 +224,14 @@ function renderFolderSidebar() {
     wrap.appendChild(strip);
 
     // Async: load images for this folder and render strip
+    // ถ้า folder ถูกล็อคและยังไม่ได้ปลดล็อค → ซ่อน strip ทันที ไม่ fetch
     (async () => {
       try {
+        if (isFolderLocked(f.path) && !isFolderUnlocked(f.path)) {
+          strip.innerHTML = '<span style="color:var(--t4);font-size:0.7rem;padding:4px">🔒 ล็อคอยู่</span>';
+          strip.classList.remove('sb-thumb-loading');
+          return;
+        }
         const qs = f.path ? '?folder=' + encodeURIComponent(f.path) : '';
         const d = await apiFetch('/api/files' + qs);
         if (!d.ok) { strip.remove(); return; }
