@@ -193,16 +193,45 @@ async function deleteOldDashboard() {
 }
 
 // ───────────────
+// 🧹 SCAN & CLEANUP — ลบ dashboard เก่าถ้าเกิน 2 อัน
+// ───────────────
+async function cleanupExtraDashboards(channel) {
+  try {
+    // ดึง 100 ข้อความล่าสุด
+    const fetched = await channel.messages.fetch({ limit: 100 });
+
+    // กรองเฉพาะ embed ที่เป็น DASHBOARD ของ bot เรา
+    const dashboards = fetched
+      .filter(m =>
+        m.author.id === client.user.id &&
+        m.embeds?.length > 0 &&
+        m.embeds[0]?.title?.includes('REALTIME SERVER DASHBOARD')
+      )
+      .sort((a, b) => a.createdTimestamp - b.createdTimestamp); // เก่าสุดก่อน
+
+    // ถ้ามีเกิน 2 อัน → ลบอันที่เก่าที่สุดออกจนเหลือ 1 (เพราะจะสร้างใหม่อีกอัน)
+    const toDelete = dashboards.size > 1 ? [...dashboards.values()].slice(0, dashboards.size - 1) : [];
+    for (const m of toDelete) {
+      await m.delete().catch(() => {});
+      console.log("🗑 Cleaned up extra dashboard:", m.id);
+    }
+  } catch (e) {
+    console.log("⚠ cleanupExtraDashboards:", e.message);
+  }
+}
+
+// ───────────────
 // 🤖 BOT READY
 // ───────────────
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
-  // Delete previous status message (handles crash/kill scenarios)
-  await deleteOldDashboard();
-
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel) return console.log("❌ Channel not found");
+
+  // ลบ dashboard เก่าจาก file + scan หาอันที่ค้างอยู่
+  await deleteOldDashboard();
+  await cleanupExtraDashboards(channel);
 
   await startDashboard(channel);
 });
