@@ -52,6 +52,12 @@ let lbFiles = [], lbIndex = 0;
 // Move modal state
 let moveTarget = null; // { name, folder }
 
+// Lock state
+const unlockedFolders = {}; // { folderPath: pin }
+let lockedFoldersList = [];
+let lockModalCallback = null;
+let lockSettingsTarget = null;
+
 // ── Init ──
 window.addEventListener('load', () => {
   if (localStorage.getItem('fv-dark')==='1') { document.body.classList.add('dark'); const b=document.getElementById('dark-btn'); if(b) b.textContent='☀️'; }
@@ -298,7 +304,9 @@ async function loadFiles() {
     if (d.ok) {
       allFiles = (d.files||[]).filter(f=>!f.isDir);
       const subDirs = (d.files||[]).filter(f=>f.isDir);
-      allFiles.filter(f=>getFileCat(f.name)==='zip').forEach(f=>{\n        if (!zipStore[f.name]) zipStore[f.name]={name:f.name,size:f.size,fileCount:'?',files:[],created:f.modified};\n      });
+      allFiles.filter(f=>getFileCat(f.name)==='zip').forEach(f=>{
+        if (!zipStore[f.name]) zipStore[f.name]={name:f.name,size:f.size,fileCount:'?',files:[],created:f.modified};
+      });
       updateCounts();
       renderFiles(subDirs);
     }
@@ -922,10 +930,6 @@ async function apiFetch(url,opts={}){
 }
 
 // ── Folder Lock System ──
-const unlockedFolders = {}; // { folderPath: pin }
-let lockedFoldersList = []; // from server
-let lockModalCallback = null;
-let lockSettingsTarget = null;
 
 async function loadLocks() {
   try { const d=await fetch('/api/lock'); const j=await d.json(); if(j.ok) lockedFoldersList=j.locks||[]; } catch{}
