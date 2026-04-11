@@ -22,6 +22,7 @@
     </div>
     <div class="topnav-right">
       <button class="topnav-btn" onclick="toggleView()" id="view-toggle-btn" title="สลับมุมมอง">⊞</button>
+      <button class="topnav-btn" onclick="toggleGlobalPreview()" id="preview-global-btn" title="เปิด/ปิด Preview">👁</button>
       <button class="topnav-btn" onclick="toggleDark()" id="dark-btn" title="Dark Mode">🌙</button>
     </div>
   </div>
@@ -122,10 +123,35 @@
       </div>
       <button class="modal-close" onclick="closeEditor()">✕</button>
     </div>
+    <!-- Preview toggle bar -->
+    <div id="preview-toggle-bar" class="preview-toggle-bar hidden">
+      <button id="btn-show-preview" class="ptab active" onclick="switchModalTab('preview')">👁 Preview</button>
+      <button id="btn-show-editor" class="ptab" onclick="switchModalTab('editor')">✏️ แก้ไข</button>
+    </div>
     <textarea id="editor" class="modal-editor" placeholder="เนื้อหาไฟล์..."></textarea>
+    <!-- Preview area: image -->
     <div id="modal-preview" class="modal-preview hidden"><img id="preview-img"/></div>
+    <!-- Preview area: PDF -->
+    <div id="modal-preview-pdf" class="modal-preview-embed hidden">
+      <iframe id="preview-pdf" src="" frameborder="0"></iframe>
+    </div>
+    <!-- Preview area: video -->
+    <div id="modal-preview-video" class="modal-preview-embed hidden">
+      <video id="preview-video" controls playsinline></video>
+    </div>
+    <!-- Preview area: audio -->
+    <div id="modal-preview-audio" class="modal-preview-audio hidden">
+      <div class="audio-art" id="audio-art">🎵</div>
+      <audio id="preview-audio" controls></audio>
+    </div>
+    <!-- Preview area: unsupported -->
+    <div id="modal-preview-none" class="modal-preview-none hidden">
+      <div class="pnone-ico" id="pnone-ico">📄</div>
+      <div class="pnone-msg">ไม่รองรับ Preview สำหรับไฟล์ประเภทนี้</div>
+      <button class="tbtn tbtn-gray" onclick="downloadCurrent()">⬇ ดาวน์โหลดเพื่อเปิด</button>
+    </div>
     <div class="modal-actions">
-      <button class="tbtn tbtn-blue" onclick="saveFile()">💾 บันทึก</button>
+      <button class="tbtn tbtn-blue" id="modal-btn-save" onclick="saveFile()">💾 บันทึก</button>
       <button class="tbtn tbtn-purple" onclick="renameCurrentFile()">✏️ เปลี่ยนชื่อ</button>
       <button class="tbtn tbtn-gray" onclick="downloadCurrent()">⬇ โหลด</button>
       <button class="tbtn tbtn-red" onclick="deleteFile()">🗑 ลบ</button>

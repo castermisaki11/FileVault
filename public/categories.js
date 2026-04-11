@@ -12,7 +12,23 @@ const CATS = {
   doc:   { label:'เอกสาร', icon:'📄', color:'#00B894', ext:['txt','md','pdf','doc','docx','csv','xls','xlsx','ppt','pptx','odt','rtf','pages','numbers','keynote','epub','mobi'] },
   zip:   { label:'ZIP',    icon:'🗜️', color:'#E17055', ext:['zip','rar','7z','tar','gz','bz2','xz','tgz'] },
 };
-const IMAGE_EXTS = ['png','jpg','jpeg','gif','webp'];
+const IMAGE_EXTS  = ['png','jpg','jpeg','gif','webp'];
+const VIDEO_EXTS  = ['mp4','webm','ogg','mov','mkv','avi'];
+const AUDIO_EXTS  = ['mp3','wav','ogg','flac','aac','m4a','opus'];
+const PDF_EXTS    = ['pdf'];
+const TEXT_EXTS   = ['txt','md','json','js','ts','jsx','tsx','html','htm','css','scss','sass','py','sh','bash','php','c','cpp','h','java','go','rs','xml','yaml','yml','toml','ini','env','rb','swift','kt','dart','vue','svelte','csv','sql','r','lua','log','gitignore'];
+
+function getPreviewType(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  if (IMAGE_EXTS.includes(ext))  return 'image';
+  if (VIDEO_EXTS.includes(ext))  return 'video';
+  if (AUDIO_EXTS.includes(ext))  return 'audio';
+  if (PDF_EXTS.includes(ext))    return 'pdf';
+  if (TEXT_EXTS.includes(ext))   return 'text';
+  return 'none';
+}
+
+let previewMode = true; // global toggle: show preview by default
 
 // ── State ──
 let currentCat    = 'all';
@@ -40,6 +56,8 @@ let moveTarget = null; // { name, folder }
 window.addEventListener('load', () => {
   if (localStorage.getItem('fv-dark')==='1') { document.body.classList.add('dark'); const b=document.getElementById('dark-btn'); if(b) b.textContent='☀️'; }
   if (localStorage.getItem('fv-view')) { viewMode=localStorage.getItem('fv-view'); updateViewBtn(); }
+  // restore preview mode
+  if (localStorage.getItem('fv-preview')==='0') { previewMode=false; updatePreviewBtn(); }
   // restore last folder
   const saved = localStorage.getItem('fv-folder');
   if (saved !== null) currentFolder = saved;
@@ -49,6 +67,28 @@ window.addEventListener('load', () => {
   setupKeyboard();
   updateBreadcrumb();
 });
+
+function updatePreviewBtn() {
+  const btn = document.getElementById('preview-global-btn');
+  if (!btn) return;
+  if (previewMode) {
+    btn.textContent = '👁';
+    btn.classList.remove('preview-off');
+    btn.title = 'Preview เปิดอยู่ — คลิกเพื่อปิด';
+  } else {
+    btn.textContent = '👁';
+    btn.classList.add('preview-off');
+    btn.title = 'Preview ปิดอยู่ — คลิกเพื่อเปิด';
+  }
+}
+
+function toggleGlobalPreview() {
+  previewMode = !previewMode;
+  localStorage.setItem('fv-preview', previewMode ? '1' : '0');
+  updatePreviewBtn();
+  const msg = previewMode ? '👁 เปิด Preview แล้ว' : '🚫 ปิด Preview แล้ว';
+  toast(msg);
+}
 
 // ── Helpers ──
 function getFileCat(name) {
@@ -565,6 +605,52 @@ async function newFile() {
   else toast('⚠ '+d.error,true);
 }
 
+// ── Preview helpers ──
+function hideAllPreviews() {
+  ['modal-preview','modal-preview-pdf','modal-preview-video','modal-preview-audio','modal-preview-none'].forEach(id=>{
+    document.getElementById(id)?.classList.add('hidden');
+  });
+  document.getElementById('editor')?.classList.add('hidden');
+  // stop media
+  const vid=document.getElementById('preview-video'); if(vid){vid.pause();vid.src='';}
+  const aud=document.getElementById('preview-audio'); if(aud){aud.pause();aud.src='';}
+}
+
+function switchModalTab(tab) {
+  document.getElementById('btn-show-preview').classList.toggle('active', tab==='preview');
+  document.getElementById('btn-show-editor').classList.toggle('active', tab==='editor');
+  const savedType = document.getElementById('editor-modal').dataset.previewType;
+  if (tab === 'preview') {
+    document.getElementById('editor')?.classList.add('hidden');
+    document.getElementById('modal-btn-save').classList.add('hidden');
+    showPreviewPane(savedType, document.getElementById('editor-modal').dataset.fileUrl);
+  } else {
+    hideAllPreviews();
+    document.getElementById('editor')?.classList.remove('hidden');
+    document.getElementById('modal-btn-save').classList.remove('hidden');
+  }
+}
+
+function showPreviewPane(type, url) {
+  hideAllPreviews();
+  if (type === 'image') {
+    document.getElementById('preview-img').src = url;
+    document.getElementById('modal-preview').classList.remove('hidden');
+  } else if (type === 'pdf') {
+    document.getElementById('preview-pdf').src = url;
+    document.getElementById('modal-preview-pdf').classList.remove('hidden');
+  } else if (type === 'video') {
+    document.getElementById('preview-video').src = url;
+    document.getElementById('modal-preview-video').classList.remove('hidden');
+  } else if (type === 'audio') {
+    document.getElementById('preview-audio').src = url;
+    document.getElementById('modal-preview-audio').classList.remove('hidden');
+  } else {
+    document.getElementById('pnone-ico').textContent = fIcon(document.getElementById('editor-modal').dataset.fileName||'file');
+    document.getElementById('modal-preview-none').classList.remove('hidden');
+  }
+}
+
 async function openFileByName(name, folder) {
   const f = folder !== undefined ? folder : currentFolder;
   const cat=getFileCat(name), fileObj=allFiles.find(x=>x.name===name)||{};
@@ -576,20 +662,62 @@ async function openFileByName(name, folder) {
   const catBadge=document.getElementById('modal-fcat'), info=getCatInfo(cat);
   catBadge.textContent=info.icon+' '+info.label; catBadge.className='modal-cat-badge '+cat;
   catBadge.style.background=info.color+'22'; catBadge.style.color=info.color;
-  if(isRealImage(name)){
-    document.getElementById('editor').classList.add('hidden');
-    document.getElementById('modal-preview').classList.remove('hidden');
-    document.getElementById('preview-img').src=`${API}/api/download/${encodeURIComponent(name)}${folderQs(f)}`;
-  } else {
-    document.getElementById('modal-preview').classList.add('hidden');
+
+  const ptype = getPreviewType(name);
+  const fileUrl = `${API}/api/download/${encodeURIComponent(name)}${folderQs(f)}`;
+  const modal = document.getElementById('editor-modal');
+  modal.dataset.previewType = ptype;
+  modal.dataset.fileUrl = fileUrl;
+  modal.dataset.fileName = name;
+
+  const canPreview = ptype !== 'none';
+  const canEdit = ptype === 'text';
+  const toggleBar = document.getElementById('preview-toggle-bar');
+  const saveBtn = document.getElementById('modal-btn-save');
+
+  hideAllPreviews();
+
+  // ถ้า global preview ปิดอยู่ → editor โหมดเสมอ (ถ้าเปิดได้)
+  if (!previewMode) {
+    toggleBar.classList.add('hidden');
+    saveBtn.classList.remove('hidden');
     document.getElementById('editor').classList.remove('hidden');
-    try{const d=await apiFetch(`/api/files/${encodeURIComponent(name)}${folderQs(f)}`);document.getElementById('editor').value=d.content||'';}
-    catch{document.getElementById('editor').value='';}
+    try { const d=await apiFetch(`/api/files/${encodeURIComponent(name)}${folderQs(f)}`); document.getElementById('editor').value=d.content||''; }
+    catch { document.getElementById('editor').value='ไม่สามารถโหลดไฟล์ได้'; }
+  } else if (canPreview && !canEdit) {
+    // รูป / pdf / video / audio — preview อย่างเดียว ไม่มี toggle
+    toggleBar.classList.add('hidden');
+    saveBtn.classList.add('hidden');
+    document.getElementById('editor').classList.add('hidden');
+    showPreviewPane(ptype, fileUrl);
+  } else if (canPreview && canEdit) {
+    // text files — มี toggle tabs
+    toggleBar.classList.remove('hidden');
+    document.getElementById('btn-show-preview').classList.add('active');
+    document.getElementById('btn-show-editor').classList.remove('active');
+    saveBtn.classList.add('hidden');
+    showPreviewPane(ptype, fileUrl);
+    // โหลด content ไว้รอในพื้นหลัง
+    try { const d=await apiFetch(`/api/files/${encodeURIComponent(name)}${folderQs(f)}`); document.getElementById('editor').value=d.content||''; }
+    catch { document.getElementById('editor').value=''; }
+  } else {
+    // ไม่รองรับ preview
+    toggleBar.classList.add('hidden');
+    saveBtn.classList.add('hidden');
+    document.getElementById('modal-preview-none').classList.remove('hidden');
+    document.getElementById('pnone-ico').textContent=fIcon(name);
   }
+
   document.getElementById('editor-modal').classList.remove('hidden');
 }
 
-function closeEditor() { document.getElementById('editor-modal').classList.add('hidden'); currentFile=null; }
+function closeEditor() {
+  document.getElementById('editor-modal').classList.add('hidden');
+  hideAllPreviews();
+  document.getElementById('preview-toggle-bar').classList.add('hidden');
+  document.getElementById('modal-btn-save').classList.remove('hidden');
+  currentFile=null;
+}
 
 async function saveFile() {
   if(!currentFile) return;
