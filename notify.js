@@ -340,6 +340,7 @@ client.on(Events.MessageCreate, async (msg) => {
       '`!status`   — ดูสถานะ server',
       '`!locks`    — ดาวน์โหลด folder-locks.json',
       '`!help`     — แสดง commands',
+      '`!locks`     — โหลดไฟล์ folder-locks',
     ].join('\n')).catch(() => null);
     deleteAfter(msg, 15_000);        // ลบคำสั่งหลัง 1 นาที
     if (reply) deleteAfter(reply, 15_000); // ลบ reply หลัง 1 นาที
