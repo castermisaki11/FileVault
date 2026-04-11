@@ -221,6 +221,61 @@ process.on("SIGTERM", async () => {
 });
 
 // ───────────────
+// 💬 COMMAND HANDLER (!shutdown, !status)
+// ───────────────
+const ADMIN_IDS = (process.env.DISCORD_ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+
+function isAdmin(userId) {
+  // ถ้าไม่ได้ตั้ง DISCORD_ADMIN_IDS → ทุกคนใน channel สั่งได้
+  if (!ADMIN_IDS.length) return true;
+  return ADMIN_IDS.includes(userId);
+}
+
+let shutdownCallback = null; // server.js จะ inject callback นี้
+
+client.on(Events.MessageCreate, async (msg) => {
+  if (msg.author.bot) return;
+  if (msg.channelId !== channelId) return;
+  if (!msg.content.startsWith('!')) return;
+
+  const cmd = msg.content.trim().toLowerCase();
+
+  // ── !shutdown ──
+  if (cmd === '!shutdown') {
+    if (!isAdmin(msg.author.id)) {
+      await msg.reply('❌ คุณไม่มีสิทธิ์สั่งปิด server').catch(() => {});
+      return;
+    }
+    await msg.reply('🛑 กำลังปิด FileVault Server...').catch(() => {});
+    console.log(`🛑 Shutdown triggered by Discord: ${msg.author.tag}`);
+    if (shutdownCallback) {
+      shutdownCallback();
+    } else {
+      process.kill(process.pid, 'SIGTERM');
+    }
+    return;
+  }
+
+  // ── !status ──
+  if (cmd === '!status') {
+    const embed = buildEmbed();
+    await msg.reply({ embeds: [embed] }).catch(() => {});
+    return;
+  }
+
+  // ── !help ──
+  if (cmd === '!help') {
+    await msg.reply([
+      '**📋 FileVault Bot Commands**',
+      '`!shutdown` — ปิด server',
+      '`!status`   — ดูสถานะ server',
+      '`!help`     — แสดง commands',
+    ].join('\n')).catch(() => {});
+    return;
+  }
+});
+
+// ───────────────
 // 🖼️ AUTO-UPLOAD DISCORD IMAGES TO R2
 // ───────────────
 const IMAGE_MIME = ["image/png","image/jpeg","image/gif","image/webp","image/bmp","image/tiff","image/avif","image/heic","image/svg+xml"];
@@ -275,6 +330,7 @@ client.on(Events.MessageCreate, async (msg) => {
 // ───────────────
 async function sendOnline() { /* dashboard created on ready */ }
 async function sendOffline() { await stop(); }
-module.exports = { sendOnline, sendOffline };
+function setShutdownCallback(cb) { shutdownCallback = cb; }
+module.exports = { sendOnline, sendOffline, setShutdownCallback };
 
 client.login(token);

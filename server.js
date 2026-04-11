@@ -7,7 +7,7 @@ const cors    = require('cors');
 const os      = require('os');
 const http    = require('http');
 const { execSync } = require('child_process');
-const { sendOnline, sendOffline } = require("./notify");
+const { sendOnline, sendOffline, setShutdownCallback } = require("./notify");
 const r2 = require('./r2');
 
 const readline = require("readline");
@@ -500,8 +500,12 @@ app.get('/api/download/:name', async (req,res)=>{
   try {
     const obj = await r2.downloadObject(key);
     stats.downloads++; stats.r2_downloads++;
-    res.set('Content-Type', obj.contentType||'application/octet-stream');
-    res.set('Content-Disposition', `attachment; filename="${name}"`);
+    // fallback MIME จาก extension ถ้า R2 เก็บเป็น octet-stream
+    const ct = (!obj.contentType || obj.contentType === 'application/octet-stream')
+      ? r2.guessMime(name, 'application/octet-stream')
+      : obj.contentType;
+    res.set('Content-Type', ct);
+    res.set('Content-Disposition', `inline; filename="${name}"`);
     if(obj.contentLength) res.set('Content-Length', obj.contentLength);
     res.send(obj.buffer);
   } catch(e) {
@@ -663,6 +667,30 @@ app.get('/api/r2/status', (req,res) => {
 });
 
 
+// ── Graceful Shutdown ──
+const SHUTDOWN_TOKEN = process.env.FV_SHUTDOWN_TOKEN || '';
+
+async function gracefulShutdown(reason = 'manual') {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n🛑 Shutting down... (reason: ${reason})`);
+  writeData('stats', stats);
+  try { await sendOffline?.(); } catch {}
+  const server = app.get('server');
+  if (server) server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000);
+}
+
+// POST /api/shutdown  (ต้องใส่ token ถ้าตั้ง FV_SHUTDOWN_TOKEN ไว้)
+app.post('/api/shutdown', async (req, res) => {
+  const token = req.headers['x-shutdown-token'] || req.body?.token || '';
+  if (SHUTDOWN_TOKEN && token !== SHUTDOWN_TOKEN) {
+    return res.status(403).json({ ok: false, error: 'token ไม่ถูกต้อง' });
+  }
+  res.json({ ok: true, message: '🛑 กำลังปิด server...' });
+  setTimeout(() => gracefulShutdown('api'), 500);
+});
+
 app.use((err,req,res,next)=>{
   stats.errors++;
   if(err.code==='LIMIT_FILE_SIZE') return res.status(413).json({ok:false,error:`ไฟล์ใหญ่เกิน (สูงสุด ${formatSize(FILE_SIZE_BYTES)})`});
@@ -709,6 +737,7 @@ function startServer(port) {
 
     try {
       await sendOnline?.();
+      setShutdownCallback?.(() => gracefulShutdown('discord'));
     } catch (e) {
       console.log("Discord error:", e.message);
     }
@@ -729,14 +758,8 @@ function startServer(port) {
   });
 }
 
-process.on("SIGINT", async () => {
-  try {
-    await sendOffline?.();
-  } catch {}
-
-  const server = app.get("server");
-  if (server) server.close(() => process.exit(0));
-});
+process.on("SIGINT",  () => gracefulShutdown('SIGINT'));
+process.on("SIGTERM", () => gracefulShutdown('SIGTERM'));
 
 startServer(PORT);
 

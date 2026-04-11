@@ -121,16 +121,38 @@ async function searchObjects(query) {
   return results;
 }
 
+// ── MIME type map (fallback จาก extension) ──
+const MIME_MAP = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  gif: 'image/gif',  webp: 'image/webp', bmp: 'image/bmp',
+  tiff: 'image/tiff', tif: 'image/tiff', svg: 'image/svg+xml',
+  avif: 'image/avif', heic: 'image/heic', ico: 'image/x-icon',
+  mp4: 'video/mp4',  mov: 'video/quicktime', webm: 'video/webm',
+  mp3: 'audio/mpeg', wav: 'audio/wav',  ogg: 'audio/ogg',
+  pdf: 'application/pdf', zip: 'application/zip',
+  json: 'application/json', txt: 'text/plain',
+  html: 'text/html', css: 'text/css', js: 'text/javascript',
+};
+
+function guessMime(key, fallback = 'application/octet-stream') {
+  const ext = key.split('.').pop().toLowerCase();
+  return MIME_MAP[ext] || fallback;
+}
+
 /** Upload a file (Buffer or Stream) */
 async function uploadObject(key, body, contentType, metadata = {}) {
   const client = getClient();
+  // ถ้า contentType เป็น octet-stream หรือไม่มี ให้ guess จาก extension
+  const resolvedType = (!contentType || contentType === 'application/octet-stream')
+    ? guessMime(key, 'application/octet-stream')
+    : contentType;
   const upload = new Upload({
     client,
     params: {
       Bucket:      R2_CONFIG.BUCKET,
       Key:         key,
       Body:        body,
-      ContentType: contentType || 'application/octet-stream',
+      ContentType: resolvedType,
       Metadata:    metadata,
     },
   });
@@ -201,6 +223,7 @@ async function presignDownload(key, expiresIn = 3600) {
 
 module.exports = {
   R2_CONFIG,
+  guessMime,
   listObjects,
   searchObjects,
   uploadObject,
