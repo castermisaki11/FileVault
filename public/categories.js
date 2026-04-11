@@ -33,6 +33,9 @@ let previewMode = true; // global toggle: show preview by default
 // ── State ──
 let currentCat    = 'all';
 let currentSort   = 'name';
+let sortDir       = 1;   // 1 = asc, -1 = desc
+let filterSize    = '';
+let filterDate    = '';
 let viewMode      = 'grid';
 let allFiles      = [];
 let zipStore      = {};
@@ -95,6 +98,7 @@ function toggleGlobalPreview() {
   updatePreviewBtn();
   const msg = previewMode ? '👁 เปิด Preview แล้ว' : '🚫 ปิด Preview แล้ว';
   toast(msg);
+  renderFiles(); // re-render cards to show/hide image thumbnails
 }
 
 // ── Helpers ──
@@ -340,20 +344,88 @@ function setCategory(btn, cat) {
   document.querySelectorAll('.cat-tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active'); currentCat=cat; renderFiles();
 }
+
+function applyFilters() { renderFiles(); }
+
+function toggleFilterPanel() {
+  const panel = document.getElementById('filter-panel');
+  const btn = document.getElementById('filter-btn');
+  const isHidden = panel.classList.toggle('hidden');
+  btn.classList.toggle('active', !isHidden);
+}
+
+function clearFilters() {
+  document.getElementById('filter-size').value = '';
+  document.getElementById('filter-date').value = '';
+  document.getElementById('search-inp').value = '';
+  filterSize = ''; filterDate = '';
+  document.getElementById('filter-btn').classList.remove('active');
+  renderFiles();
+}
+
 function getFilteredFiles() {
-  const q=(document.getElementById('search-inp')?.value||'').toLowerCase();
+  const q = (document.getElementById('search-inp')?.value||'').toLowerCase();
+  const fSize = document.getElementById('filter-size')?.value || '';
+  const fDate = document.getElementById('filter-date')?.value || '';
+
   let files = currentCat==='all' ? allFiles : allFiles.filter(f=>getFileCat(f.name)===currentCat);
   if (q) files = files.filter(f=>f.name.toLowerCase().includes(q));
+
+  // Size filter
+  if (fSize) {
+    files = files.filter(f => {
+      const s = f.size || 0;
+      if (fSize==='tiny')   return s < 102400;
+      if (fSize==='small')  return s >= 102400 && s < 1048576;
+      if (fSize==='medium') return s >= 1048576 && s < 52428800;
+      if (fSize==='large')  return s >= 52428800;
+      return true;
+    });
+  }
+
+  // Date filter
+  if (fDate) {
+    const now = Date.now();
+    files = files.filter(f => {
+      const mod = f.modified || 0;
+      if (fDate==='today') return now - mod < 86400000;
+      if (fDate==='week')  return now - mod < 604800000;
+      if (fDate==='month') return now - mod < 2592000000;
+      if (fDate==='year')  return now - mod < 31536000000;
+      return true;
+    });
+  }
+
   return [...files].sort((a,b)=>{
-    if (currentSort==='name') return a.name.localeCompare(b.name,'th');
-    if (currentSort==='date') return new Date(b.modified)-new Date(a.modified);
-    if (currentSort==='size') return b.size-a.size;
-    return 0;
+    let cmp = 0;
+    if (currentSort==='name') cmp = a.name.localeCompare(b.name,'th');
+    else if (currentSort==='date') cmp = (b.modified||0) - (a.modified||0);
+    else if (currentSort==='size') cmp = (b.size||0) - (a.size||0);
+    return cmp * sortDir;
   });
 }
+
+function updateSortDirIndicators() {
+  ['name','date','size'].forEach(k => {
+    const el = document.getElementById('sort-dir-'+k);
+    if (!el) return;
+    if (k === currentSort) el.textContent = sortDir === 1 ? '↑' : '↓';
+    else el.textContent = '';
+  });
+}
+
 function setSort(key, btn) {
+  if (currentSort === key) {
+    sortDir = sortDir * -1; // toggle direction
+  } else {
+    currentSort = key;
+    // default direction: name=asc, date=desc (newest first), size=desc (biggest first)
+    sortDir = (key === 'name') ? 1 : -1;
+  }
   document.querySelectorAll('.sort-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active'); currentSort=key; renderFiles();
+  btn.classList.add('active');
+  updateSortDirIndicators();
+  renderFiles();
 }
 
 // ══════════════════════════════════════════════
@@ -432,7 +504,7 @@ function renderGallery(grid, files) {
   files.forEach(f=>{
     const item=document.createElement('div');
     item.className='gallery-item';
-    if (isRealImage(f.name)) {
+    if (isRealImage(f.name) && previewMode) {
       item.innerHTML=`<img src="${API}/api/download/${encodeURIComponent(f.name)}${folderQs(f.folder)}" alt="${esc(f.name)}" loading="lazy"/><div class="gallery-item-overlay"><span class="gallery-item-name">${esc(f.name)}</span></div>`;
       item.onclick=()=>openLightbox(f.name, files.filter(x=>isRealImage(x.name)));
     } else {
@@ -471,7 +543,7 @@ function makeCard(f) {
   const card=document.createElement('div');
   card.className='file-card';
   const cat=getFileCat(f.name), info=getCatInfo(cat);
-  const thumb = isRealImage(f.name)
+  const thumb = (isRealImage(f.name) && previewMode)
     ? `<img class="fc-img-thumb" src="${API}/api/download/${encodeURIComponent(f.name)}${folderQs(f.folder||currentFolder)}" loading="lazy" alt="${esc(f.name)}"/>`
     : `<div class="fc-ico" style="color:${info.color}">${fIcon(f.name)}</div>`;
   const folderTag = searchGlobal && f.folder ? `<div class="fc-folder-tag">📂 ${esc(f.folder)}</div>` : '';

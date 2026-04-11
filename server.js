@@ -1,6 +1,4 @@
 require('dotenv').config();
-console.log("WEBHOOK =", process.env.WEBHOOK_URL);
-console.log("ALL ENV =", process.env);
 const express = require('express');
 const multer  = require('multer');
 const path    = require('path');
@@ -12,12 +10,11 @@ const { execSync } = require('child_process');
 const { sendOnline, sendOffline } = require("./notify");
 const r2 = require('./r2');
 
-const app = express(); // 👈 ต้องมาก่อน
+const readline = require("readline");
 
-// ✅ PORT ต้องประกาศก่อนใช้
+const app = express(); 
 const PORT = process.env.FV_PORT || 3000;
 
-// middleware
 app.use(cors());
 app.use(express.json());
 
@@ -84,8 +81,6 @@ const DATA_DIR   = path.join(__dirname, 'data');
 const DUMP_DIR   = path.join(__dirname, 'dumps');
 [UPLOAD_DIR, DATA_DIR, DUMP_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
-
-// ── Folder helpers ──
 function safeFolderPath(folder) {
   if (!folder || folder === '/' || folder === '.') return UPLOAD_DIR;
   const clean = folder.replace(/\.\./g,'').replace(/[^a-zA-Z0-9_\-ก-๙/]/g,'_').replace(/\/+/g,'/').replace(/^\//,'');
@@ -120,14 +115,12 @@ function getDirSizeRecursive(dir) {
   return total;
 }
 
-// ── Data / Stats ──
 const dataFile  = n => path.join(DATA_DIR, n+'.json');
 const readData  = (n,d) => { try { return JSON.parse(fs.readFileSync(dataFile(n),'utf8')); } catch { return d; } };
 const writeData = (n,v) => fs.writeFileSync(dataFile(n), JSON.stringify(v,null,2));
 let stats = readData('stats', { requests:0, uploads:0, downloads:0, deletes:0, errors:0, moves:0, r2_uploads:0, r2_downloads:0, r2_deletes:0 });
 setInterval(() => writeData('stats', stats), 10_000);
 
-// ── Storage ──
 function getUploadDirSize() { return getDirSizeRecursive(UPLOAD_DIR); }
 function getStorageInfo() {
   const used=getUploadDirSize(), limit=STORAGE_LIMIT_BYTES, unlimited=limit===0;
@@ -136,7 +129,6 @@ function getStorageInfo() {
   return { used, limit, unlimited, free, pct, diskFree };
 }
 
-// ── Archive ──
 let isShuttingDown = false;
 function archiveAndShutdown(server) {
   if (isShuttingDown) return; isShuttingDown = true;
@@ -148,7 +140,6 @@ function archiveAndShutdown(server) {
   setTimeout(() => process.exit(0), 5000);
 }
 
-// ── Multer ──
 const storage = multer.diskStorage({
   destination: (req,file,cb) => { const d=safeFolderPath(req.query.folder||''); ensureFolder(d); cb(null,d); },
   filename: (req,file,cb) => {
@@ -168,7 +159,6 @@ function checkStorageLimit(req,res,next) {
 const upload    = multer({ storage,    limits: { fileSize: FILE_SIZE_BYTES||undefined } });
 const uploadMem = multer({ storage: memStorage, limits: { fileSize: FILE_SIZE_BYTES||undefined } });
 
-// ── Network ──
 function getLocalIP() {
   for (const nets of Object.values(os.networkInterfaces())) for (const n of nets) if (n.family==='IPv4'&&!n.internal) return n.address;
   return 'localhost';
@@ -179,41 +169,150 @@ app.use(cors()); app.use(express.json({limit:'10mb'}));
 app.use(express.static(path.join(__dirname,'public')));
 app.use((req,res,next)=>{ stats.requests++; next(); });
 
+// ── Site Password Lock ──
+const SITE_PASSWORD = process.env.FV_SITE_PASSWORD || '';
+const siteTokens = new Set();
+function genToken() { return crypto.randomBytes(32).toString('hex'); }
+
+if (SITE_PASSWORD) {
+  // Serve login page for all non-asset, non-api paths when not authenticated
+  app.use((req, res, next) => {
+    // Always allow API auth endpoint and static assets
+    if (req.path === '/api/site-auth' || req.path.startsWith('/api/') ) return next();
+    const token = req.cookies?.fv_token || req.headers['x-fv-token'] || new URLSearchParams(req.url.split('?')[1]||'').get('fv_token');
+    if (token && siteTokens.has(token)) return next();
+    // Serve lock page
+    res.send(`<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>FileVault — ล็อค</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1117;font-family:'Segoe UI',sans-serif}
+  .card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:20px;padding:40px 36px;max-width:360px;width:100%;text-align:center;box-shadow:0 8px 40px #0008}
+  .logo{font-size:2.8rem;margin-bottom:12px}
+  h1{color:#e2e8f0;font-size:1.3rem;font-weight:700;margin-bottom:4px}
+  .sub{color:#64748b;font-size:.85rem;margin-bottom:28px}
+  input{width:100%;padding:12px 16px;border-radius:12px;border:1.5px solid #2a2d3a;background:#0f1117;color:#e2e8f0;font-size:1rem;margin-bottom:14px;outline:none;text-align:center;letter-spacing:3px;transition:border .2s}
+  input:focus{border-color:#6366f1}
+  button{width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:1rem;font-weight:600;cursor:pointer;transition:opacity .2s}
+  button:hover{opacity:.9}
+  .err{color:#f87171;font-size:.82rem;margin-top:8px;display:none}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🔐</div>
+  <h1>FileVault</h1>
+  <p class="sub">กรุณาใส่รหัสผ่านเพื่อเข้าใช้งาน</p>
+  <input id="pw" type="password" placeholder="รหัสผ่าน..." onkeydown="if(event.key==='Enter')auth()"/>
+  <button onclick="auth()">เข้าสู่ระบบ</button>
+  <div class="err" id="err">❌ รหัสผ่านไม่ถูกต้อง</div>
+</div>
+<script>
+async function auth() {
+  const pw = document.getElementById('pw').value;
+  const r = await fetch('/api/site-auth', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password: pw})});
+  const d = await r.json();
+  if (d.ok) {
+    document.cookie = 'fv_token=' + d.token + '; path=/; max-age=2592000; samesite=strict';
+    location.reload();
+  } else {
+    document.getElementById('err').style.display='block';
+    document.getElementById('pw').value='';
+    document.getElementById('pw').focus();
+  }
+}
+document.getElementById('pw').focus();
+</script>
+</body>
+</html>`);
+  });
+}
+
+app.post('/api/site-auth', (req, res) => {
+  const { password } = req.body || {};
+  if (!SITE_PASSWORD) return res.json({ ok: true, token: 'no-lock' });
+  if (password === SITE_PASSWORD) {
+    const token = genToken();
+    siteTokens.add(token);
+    return res.json({ ok: true, token });
+  }
+  res.status(401).json({ ok: false, error: 'รหัสผ่านไม่ถูกต้อง' });
+});
+
+// cookie-parser lite (read cookies without adding dep)
+app.use((req, res, next) => {
+  if (!req.cookies) {
+    req.cookies = {};
+    const raw = req.headers.cookie || '';
+    raw.split(';').forEach(c => {
+      const [k, ...v] = c.trim().split('=');
+      if (k) req.cookies[k.trim()] = v.join('=');
+    });
+  }
+  next();
+});
+
 // ── Colors ──
 const RESET='\x1b[0m',BOLD='\x1b[1m',GREEN='\x1b[32m',YELLOW='\x1b[33m',RED='\x1b[31m',CYAN='\x1b[36m',GRAY='\x1b[90m';
 function makeBar(pct,w=20){const f=Math.round(pct/100*w),c=pct>=90?RED:pct>=70?YELLOW:GREEN;return c+'█'.repeat(f)+GRAY+'░'.repeat(w-f)+RESET;}
 
-// ── Status ──
-let statusLineCount=0;
+
+let statusLineCount = 0;
+
 function printStatus() {
   if (isShuttingDown) return;
-  const info=getStorageInfo(), up=process.uptime(), pad=n=>String(Math.floor(n)).padStart(2,'0');
-  const uptStr=`${pad(up/3600)}:${pad((up%3600)/60)}:${pad(up%60)}`, memMB=(process.memoryUsage().rss/1024**2).toFixed(1);
-  let fc=0; const cf=d=>{try{for(const e of fs.readdirSync(d,{withFileTypes:true})){if(e.isDirectory())cf(path.join(d,e.name));else fc++;}}catch{}};cf(UPLOAD_DIR);
-  const sl = info.unlimited ? `${BOLD}พื้นที่:${RESET} ${formatSize(info.used)}/${CYAN}ไม่จำกัด${RESET}`
-    : `${BOLD}พื้นที่:${RESET} [${makeBar(info.pct)}] ${info.pct>=90?RED:info.pct>=70?YELLOW:GREEN}${info.pct.toFixed(1)}%${RESET} ${formatSize(info.used)}/${formatSize(info.limit)} (เหลือ ${formatSize(info.free)})`;
-  const r2Line = `${BOLD}R2:${RESET} ↑${stats.r2_uploads||0} ↓${stats.r2_downloads||0} 🗑${stats.r2_deletes||0}`;
-  const lines=[
+
+  const info = getStorageInfo();
+  const up = process.uptime();
+  const pad = n => String(Math.floor(n)).padStart(2, "0");
+
+  const uptStr = `${pad(up / 3600)}:${pad((up % 3600) / 60)}:${pad(up % 60)}`;
+  const memMB = (process.memoryUsage().rss / 1024 ** 2).toFixed(1);
+
+  let fc = 0;
+  const cf = d => {
+    try {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        if (e.isDirectory()) cf(path.join(d, e.name));
+        else fc++;
+      }
+    } catch {}
+  };
+  cf(UPLOAD_DIR);
+
+  const sl = info.unlimited
+    ? `${BOLD}พื้นที่:${RESET} ${formatSize(info.used)}/${CYAN}ไม่จำกัด${RESET}`
+    : `${BOLD}พื้นที่:${RESET} [${makeBar(info.pct)}] ${
+        info.pct >= 90 ? RED : info.pct >= 70 ? YELLOW : GREEN
+      }${info.pct.toFixed(1)}%${RESET} ${formatSize(info.used)}/${formatSize(
+        info.limit
+      )} (เหลือ ${formatSize(info.free)})`;
+
+  const r2Line = `${BOLD}R2:${RESET} ↑${stats.r2_uploads || 0} ↓${stats.r2_downloads || 0} 🗑${stats.r2_deletes || 0}`;
+
+  const lines = [
     `  ${sl}`,
-    info.diskFree!==null?`  ${GRAY}ดิสก์ว่าง: ${formatSize(info.diskFree)}${RESET}`:null,
+    info.diskFree !== null ? `  ${GRAY}ดิสก์ว่าง: ${formatSize(info.diskFree)}${RESET}` : null,
     `  ${BOLD}ไฟล์:${RESET} ${fc} ไฟล์  ${BOLD}Uptime:${RESET} ${uptStr}  ${BOLD}Mem:${RESET} ${memMB} MB`,
     `  ${BOLD}Requests:${RESET} ${stats.requests}  ↑${stats.uploads} ↓${stats.downloads} 🗑${stats.deletes}`,
     `  ${r2Line}`,
   ].filter(Boolean);
-  if (statusLineCount>0) process.stdout.write(`\x1b[${statusLineCount}A\x1b[0J`);
-  process.stdout.write(lines.map(l=>`${l}\n`).join(''));
-  statusLineCount=lines.length;
+
+  readline.cursorTo(process.stdout, 0, 0);
+  readline.clearScreenDown(process.stdout);
+
+  process.stdout.write(lines.join("\n") + "\n");
+
+  statusLineCount = lines.length;
 }
 
-// ═══════════════════════════════════════════════
-// ── LOCAL ROUTES (เหมือนเดิมทุกอย่าง) ──
-// ═══════════════════════════════════════════════
-
-// STATS
 app.get('/api/stats',(req,res)=>res.json({ok:true,stats,storage:getStorageInfo()}));
 app.post('/api/stats/reset',(req,res)=>{Object.assign(stats,{requests:0,uploads:0,downloads:0,deletes:0,errors:0,moves:0,r2_uploads:0,r2_downloads:0,r2_deletes:0});res.json({ok:true});});
 
-// FOLDERS
 app.get('/api/folders', async (req,res)=>{
   try {
     const result = await r2.listObjects('');
@@ -237,7 +336,6 @@ app.delete('/api/folders', async (req,res) => {
     do {
       const params={Bucket:r2.R2_CONFIG.BUCKET, Prefix:prefix, MaxKeys:1000};
       const {S3Client,ListObjectsV2Command,DeleteObjectCommand}=require('@aws-sdk/client-s3');
-      // ใช้ r2 searchObjects แทน
       const files = await r2.searchObjects('');
       const toDelete = files.filter(f=>f.key.startsWith(prefix));
       for(const f of toDelete){ await r2.deleteObject(f.key); deleted++; }
@@ -247,18 +345,15 @@ app.delete('/api/folders', async (req,res) => {
   } catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 
-// ── Folder Lock API ──
 const crypto = require('crypto');
-const folderLocks = readData('folder-locks', {}); // { folderPath: { hash, hint } }
+const folderLocks = readData('folder-locks', {});
 function hashPin(pin) { return crypto.createHash('sha256').update('fv-lock:'+pin).digest('hex'); }
 
-// GET /api/lock — list all locked folders
 app.get('/api/lock', (req, res) => {
   const list = Object.keys(folderLocks).map(f => ({ folder: f, hint: folderLocks[f].hint||'' }));
   res.json({ ok: true, locks: list });
 });
 
-// POST /api/lock — set password on folder
 app.post('/api/lock', (req, res) => {
   const { folder, pin, hint } = req.body||{};
   if (!folder) return res.status(400).json({ ok:false, error:'ต้องระบุ folder' });
@@ -268,7 +363,6 @@ app.post('/api/lock', (req, res) => {
   res.json({ ok: true });
 });
 
-// DELETE /api/lock — remove password from folder
 app.delete('/api/lock', (req, res) => {
   const { folder, pin } = req.body||{};
   if (!folder) return res.status(400).json({ ok:false, error:'ต้องระบุ folder' });
@@ -280,20 +374,17 @@ app.delete('/api/lock', (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/lock/verify — check pin (returns token stored in session via cookie-like header)
 app.post('/api/lock/verify', (req, res) => {
   const { folder, pin } = req.body||{};
   const lock = folderLocks[folder];
-  if (!lock) return res.json({ ok:true, unlocked:true }); // not locked
+  if (!lock) return res.json({ ok:true, unlocked:true });
   if (!pin || hashPin(String(pin)) !== lock.hash) return res.status(403).json({ ok:false, error:'รหัสไม่ถูกต้อง' });
   res.json({ ok:true, unlocked:true });
 });
 
-// Middleware: protect file access to locked folders
 function checkFolderLock(req, res, next) {
   const folder = req.query.folder || req.body?.folder || '';
   if (!folder || !folderLocks[folder]) return next();
-  // Check X-Folder-Pin header
   const pin = req.headers['x-folder-pin'];
   if (!pin || hashPin(String(pin)) !== folderLocks[folder].hash) {
     return res.status(403).json({ ok:false, error:'🔒 folder นี้ถูกล็อค', locked:true, folder });
@@ -301,10 +392,8 @@ function checkFolderLock(req, res, next) {
   next();
 }
 
-// Apply lock middleware to file routes
 app.use(['/api/files', '/api/download', '/api/upload', '/api/delete', '/api/move', '/api/rename'], checkFolderLock);
 
-// FILES LIST
 app.get('/api/files', async (req,res) => {
   try {
     const folder=req.query.folder||'';
@@ -331,7 +420,6 @@ app.get('/api/files', async (req,res) => {
   } catch(e){stats.errors++;res.status(500).json({ok:false,error:e.message});}
 });
 
-// SEARCH
 app.get('/api/search', async (req,res) => {
   try {
     const q=(req.query.q||'').toLowerCase().trim();
@@ -358,9 +446,10 @@ app.post('/api/upload', checkStorageLimit, upload.array('files'), async (req,res
   }
   stats.uploads+=req.files.length;
   const folder = req.query.folder||'';
+  const r2Folder = folder || (process.env.FV_DEFAULT_FOLDER || 'uploads');
   for (const f of req.files) {
     try {
-      const key = folder ? `${folder}/${f.filename}` : f.filename;
+      const key = `${r2Folder}/${f.filename}`;
       const buffer = fs.readFileSync(f.path);
       await r2.uploadObject(key, buffer, f.mimetype);
       stats.r2_uploads++;
@@ -462,12 +551,6 @@ app.delete('/api/delete/:name', async (req,res)=>{
   stats.deletes++; res.json({ok:true,storage:getStorageInfo()});
 });
 
-// ═══════════════════════════════════════════════
-// ── R2 ROUTES (/api/r2/*) ──
-// ═══════════════════════════════════════════════
-
-// GET /api/r2/files?prefix=folder/
-//   ดูรายการไฟล์ใน R2 bucket (prefix คือ folder path)
 app.get('/api/r2/files', async (req,res) => {
   try {
     const prefix = req.query.prefix || req.query.folder || '';
@@ -476,8 +559,6 @@ app.get('/api/r2/files', async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// GET /api/r2/search?q=keyword
-//   ค้นหาไฟล์ใน R2 ทั้ง bucket
 app.get('/api/r2/search', async (req,res) => {
   try {
     const q = (req.query.q||'').trim();
@@ -487,8 +568,6 @@ app.get('/api/r2/search', async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// POST /api/r2/upload?prefix=folder/
-//   อัปโหลดไฟล์ขึ้น R2 (multipart, field name = "files")
 app.post('/api/r2/upload', uploadMem.array('files'), async (req,res) => {
   if (!req.files?.length) return res.status(400).json({ ok:false, error:'ไม่มีไฟล์' });
   try {
@@ -504,8 +583,6 @@ app.post('/api/r2/upload', uploadMem.array('files'), async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// GET /api/r2/download/:key (key อาจมี / ได้ ใช้ wildcard)
-//   ดาวน์โหลดไฟล์จาก R2 ผ่าน server
 app.get('/api/r2/download/*', async (req,res) => {
   const key = req.params[0];
   if (!key) return res.status(400).json({ ok:false, error:'ต้องระบุ key' });
@@ -523,8 +600,6 @@ app.get('/api/r2/download/*', async (req,res) => {
   }
 });
 
-// DELETE /api/r2/delete/*
-//   ลบไฟล์จาก R2
 app.delete('/api/r2/delete/*', async (req,res) => {
   const key = req.params[0];
   if (!key) return res.status(400).json({ ok:false, error:'ต้องระบุ key' });
@@ -535,9 +610,6 @@ app.delete('/api/r2/delete/*', async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// POST /api/r2/move
-//   ย้าย/คัดลอกไฟล์ใน R2
-//   body: { sourceKey, destKey, copy? }
 app.post('/api/r2/move', async (req,res) => {
   try {
     const { sourceKey, destKey, copy=false } = req.body;
@@ -549,8 +621,6 @@ app.post('/api/r2/move', async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// GET /api/r2/head/*
-//   ดู metadata ของไฟล์ใน R2 โดยไม่ดาวน์โหลด
 app.get('/api/r2/head/*', async (req,res) => {
   const key = req.params[0];
   if (!key) return res.status(400).json({ ok:false, error:'ต้องระบุ key' });
@@ -561,9 +631,6 @@ app.get('/api/r2/head/*', async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// POST /api/r2/presign/upload
-//   สร้าง presigned URL สำหรับอัปโหลดตรงจาก browser
-//   body: { key, expiresIn?, contentType? }
 app.post('/api/r2/presign/upload', async (req,res) => {
   try {
     const { key, expiresIn=3600, contentType } = req.body;
@@ -573,9 +640,6 @@ app.post('/api/r2/presign/upload', async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// POST /api/r2/presign/download
-//   สร้าง presigned URL สำหรับดาวน์โหลดตรงจาก browser
-//   body: { key, expiresIn? }
 app.post('/api/r2/presign/download', async (req,res) => {
   try {
     const { key, expiresIn=3600 } = req.body;
@@ -585,8 +649,6 @@ app.post('/api/r2/presign/download', async (req,res) => {
   } catch(e) { stats.errors++; res.status(500).json({ ok:false, error:e.message }); }
 });
 
-// GET /api/r2/status
-//   ตรวจสอบสถานะ R2 config
 app.get('/api/r2/status', (req,res) => {
   const cfg = r2.R2_CONFIG;
   const configured = !!(cfg.ACCOUNT_ID && cfg.ACCESS_KEY_ID && cfg.SECRET_ACCESS_KEY && cfg.BUCKET);
@@ -600,7 +662,7 @@ app.get('/api/r2/status', (req,res) => {
   });
 });
 
-// ── Error handler ──
+
 app.use((err,req,res,next)=>{
   stats.errors++;
   if(err.code==='LIMIT_FILE_SIZE') return res.status(413).json({ok:false,error:`ไฟล์ใหญ่เกิน (สูงสุด ${formatSize(FILE_SIZE_BYTES)})`});
@@ -657,9 +719,6 @@ function startServer(port) {
     }
   });
 
-  // ======================
-  // PORT BUSY HANDLER
-  // ======================
   httpServer.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
       console.log(`Port ${port} busy → trying ${port + 1}`);
@@ -670,9 +729,6 @@ function startServer(port) {
   });
 }
 
-// ======================
-// GRACEFUL SHUTDOWN
-// ======================
 process.on("SIGINT", async () => {
   try {
     await sendOffline?.();
@@ -682,9 +738,6 @@ process.on("SIGINT", async () => {
   if (server) server.close(() => process.exit(0));
 });
 
-// ======================
-// START
-// ======================
 startServer(PORT);
 
 // ท้ายไฟล์ server.js

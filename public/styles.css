@@ -1259,3 +1259,42 @@ body.dark .theme-panel { background: #2c2c2e; border-color: rgba(255,255,255,0.1
   padding:8px 12px; font-size:.82rem; margin-bottom:10px; }
 .lock-error { color:#e55; font-size:.83rem; margin-top:4px; }
 .folder-lock-badge { font-size:.7rem; margin-left:4px; opacity:.7; }
+
+/* ── Sort direction indicator ── */
+.sort-dir { font-size:.7rem; opacity:.7; margin-left:2px; }
+.sort-btn.active .sort-dir { opacity:1; color:var(--blue); }
+
+/* ── Filter button ── */
+.filter-btns { display:flex; align-items:center; gap:6px; margin-left:auto; }
+.filter-btn {
+  padding:5px 12px; border-radius:20px; border:1.5px solid var(--border);
+  background:var(--bg2); color:var(--t2); font-size:.8rem; cursor:pointer;
+  transition:all .15s; font-family:var(--font);
+}
+.filter-btn:hover { border-color:var(--blue); color:var(--blue); }
+.filter-btn.active { border-color:var(--blue); background:var(--blue-light); color:var(--blue); font-weight:600; }
+
+/* ── Filter panel ── */
+.filter-panel {
+  background:var(--bg2); border:1.5px solid var(--border);
+  border-radius:14px; padding:14px 16px; margin-bottom:10px;
+  display:flex; flex-wrap:wrap; gap:10px 20px; align-items:center;
+}
+.filter-panel.hidden { display:none; }
+.filter-row { display:flex; align-items:center; gap:8px; }
+.filter-label { font-size:.78rem; color:var(--t3); white-space:nowrap; font-weight:500; }
+.filter-select {
+  padding:6px 10px; border-radius:10px; border:1.5px solid var(--border);
+  background:var(--bg); color:var(--t1); font-size:.82rem; font-family:var(--font);
+  cursor:pointer; outline:none; transition:border .15s;
+}
+.filter-select:focus { border-color:var(--blue); }
+.filter-search {
+  padding:6px 12px; border-radius:10px; border:1.5px solid var(--border);
+  background:var(--bg); color:var(--t1); font-size:.82rem; font-family:var(--font);
+  outline:none; transition:border .15s; min-width:160px;
+}
+.filter-search:focus { border-color:var(--blue); }
+
+/* ── Sort bar flex adjustment ── */
+.sort-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }

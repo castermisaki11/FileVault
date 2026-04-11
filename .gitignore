@@ -1,6 +1,27 @@
+# Dependencies
 node_modules/
+
+# Environment
 .env
+.env.local
+
+# Runtime data
+uploads/
+data/
+dumps/
+
+# Logs
 npm-debug.log
+*.log
+
+# Temp / backup
+*.bak
+
+# Files referenced in old gitignore but not needed
 git.md
 log.js
 stop.js
+
+# OS
+.DS_Store
+Thumbs.db

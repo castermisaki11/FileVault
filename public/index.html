@@ -85,13 +85,47 @@
         <button class="tbtn tbtn-green" onclick="newFile()">+ สร้าง</button>
       </div>
 
-      <!-- SORT BAR -->
+      <!-- SORT & FILTER BAR -->
       <div class="sort-bar">
         <span class="sort-label" id="file-count-label">0 ไฟล์</span>
         <div class="sort-btns">
-          <button class="sort-btn active" id="sort-name" onclick="setSort('name',this)">ชื่อ</button>
-          <button class="sort-btn" id="sort-date" onclick="setSort('date',this)">วันที่</button>
-          <button class="sort-btn" id="sort-size" onclick="setSort('size',this)">ขนาด</button>
+          <button class="sort-btn active" id="sort-name" onclick="setSort('name',this)">ชื่อ <span id="sort-dir-name" class="sort-dir">↑</span></button>
+          <button class="sort-btn" id="sort-date" onclick="setSort('date',this)">วันที่ <span id="sort-dir-date" class="sort-dir"></span></button>
+          <button class="sort-btn" id="sort-size" onclick="setSort('size',this)">ขนาด <span id="sort-dir-size" class="sort-dir"></span></button>
+        </div>
+        <div class="filter-btns">
+          <button class="filter-btn" id="filter-btn" onclick="toggleFilterPanel()" title="ตัวกรอง">⚙ กรอง</button>
+        </div>
+      </div>
+
+      <!-- FILTER PANEL -->
+      <div id="filter-panel" class="filter-panel hidden">
+        <div class="filter-row">
+          <label class="filter-label">ขนาดไฟล์</label>
+          <select id="filter-size" class="filter-select" onchange="applyFilters()">
+            <option value="">ทั้งหมด</option>
+            <option value="tiny">เล็ก (&lt; 100 KB)</option>
+            <option value="small">เล็ก-กลาง (100 KB – 1 MB)</option>
+            <option value="medium">กลาง (1 MB – 50 MB)</option>
+            <option value="large">ใหญ่ (&gt; 50 MB)</option>
+          </select>
+        </div>
+        <div class="filter-row">
+          <label class="filter-label">แก้ไขล่าสุด</label>
+          <select id="filter-date" class="filter-select" onchange="applyFilters()">
+            <option value="">ทั้งหมด</option>
+            <option value="today">วันนี้</option>
+            <option value="week">7 วันที่ผ่านมา</option>
+            <option value="month">30 วันที่ผ่านมา</option>
+            <option value="year">1 ปีที่ผ่านมา</option>
+          </select>
+        </div>
+        <div class="filter-row">
+          <label class="filter-label">ค้นหา</label>
+          <input id="search-inp" class="filter-search" type="text" placeholder="ค้นหาไฟล์..." oninput="applyFilters()"/>
+        </div>
+        <div class="filter-row" style="justify-content:flex-end">
+          <button class="tbtn tbtn-gray" onclick="clearFilters()" style="padding:5px 12px;font-size:.8rem">✕ ล้างตัวกรอง</button>
         </div>
       </div>
 
