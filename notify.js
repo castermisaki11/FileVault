@@ -233,6 +233,11 @@ function isAdmin(userId) {
 
 let shutdownCallback = null; // server.js จะ inject callback นี้
 
+// helper: ลบ message หลังหน่วงเวลา (ms)
+function deleteAfter(m, ms) {
+  setTimeout(() => m.delete().catch(() => {}), ms);
+}
+
 client.on(Events.MessageCreate, async (msg) => {
   if (msg.author.bot) return;
   if (msg.channelId !== channelId) return;
@@ -243,34 +248,40 @@ client.on(Events.MessageCreate, async (msg) => {
   // ── !shutdown ──
   if (cmd === '!shutdown') {
     if (!isAdmin(msg.author.id)) {
-      await msg.reply('❌ คุณไม่มีสิทธิ์สั่งปิด server').catch(() => {});
+      const reply = await msg.reply('❌ คุณไม่มีสิทธิ์สั่งปิด server').catch(() => null);
+      deleteAfter(msg, 5_000);
+      if (reply) deleteAfter(reply, 5_000);
       return;
     }
-    await msg.reply('🛑 กำลังปิด FileVault Server...').catch(() => {});
+    const reply = await msg.reply('🛑 กำลังปิด FileVault Server...').catch(() => null);
+    deleteAfter(msg, 3_000);
+    if (reply) deleteAfter(reply, 3_000);
     console.log(`🛑 Shutdown triggered by Discord: ${msg.author.tag}`);
-    if (shutdownCallback) {
-      shutdownCallback();
-    } else {
-      process.kill(process.pid, 'SIGTERM');
-    }
+    setTimeout(() => {
+      if (shutdownCallback) shutdownCallback();
+      else process.kill(process.pid, 'SIGTERM');
+    }, 3_500);
     return;
   }
 
   // ── !status ──
   if (cmd === '!status') {
-    const embed = buildEmbed();
-    await msg.reply({ embeds: [embed] }).catch(() => {});
+    const reply = await msg.reply({ embeds: [buildEmbed()] }).catch(() => null);
+    deleteAfter(msg, 10_000);
+    if (reply) deleteAfter(reply, 10_000);
     return;
   }
 
   // ── !help ──
   if (cmd === '!help') {
-    await msg.reply([
+    const reply = await msg.reply([
       '**📋 FileVault Bot Commands**',
       '`!shutdown` — ปิด server',
       '`!status`   — ดูสถานะ server',
       '`!help`     — แสดง commands',
-    ].join('\n')).catch(() => {});
+    ].join('\n')).catch(() => null);
+    deleteAfter(msg, 60_000);        // ลบคำสั่งหลัง 1 นาที
+    if (reply) deleteAfter(reply, 60_000); // ลบ reply หลัง 1 นาที
     return;
   }
 });
@@ -296,13 +307,18 @@ client.on(Events.MessageCreate, async (msg) => {
   let uploaded = 0;
   for (const att of images) {
     try {
-      const { buffer, contentType } = await downloadToBuffer(att.url.split("?")[0]);
+      // ใช้ URL เต็มรวม query string (Discord CDN ต้องการ signature)
+      const { buffer, contentType: rawCt } = await downloadToBuffer(att.url);
       const timestamp = Date.now();
       const safeName = att.name.replace(/[^a-zA-Z0-9._\-ก-๙]/g, "_");
       const key = `${imageFolder}/${timestamp}_${safeName}`;
+      // force MIME จาก extension เพื่อให้ browser แสดง thumbnail ได้เสมอ
+      const ext = safeName.split('.').pop().toLowerCase();
+      const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', avif:'image/avif', heic:'image/heic', svg:'image/svg+xml' };
+      const contentType = mimeMap[ext] || rawCt || 'application/octet-stream';
       await r2.uploadObject(key, buffer, contentType);
       uploaded++;
-      console.log(`☁ Discord image uploaded → R2: ${key}`);
+      console.log(`☁ Discord image uploaded → R2: ${key} [${contentType}]`);
     } catch (e) {
       console.error(`❌ Failed to upload Discord image: ${att.name}`, e.message);
     }
