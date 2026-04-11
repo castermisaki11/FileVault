@@ -7,7 +7,7 @@ const cors    = require('cors');
 const os      = require('os');
 const http    = require('http');
 const { execSync } = require('child_process');
-const { sendOnline, sendOffline, setShutdownCallback } = require("./notify");
+const { sendOnline, sendOffline, setShutdownCallback, setStats } = require("./notify");
 const r2 = require('./r2');
 
 const readline = require("readline");
@@ -737,6 +737,7 @@ function startServer(port) {
 
     try {
       await sendOnline?.();
+      setStats?.(stats); // share live stats reference → dashboard จะอ่านค่าล่าสุดเสมอ
       setShutdownCallback?.(() => gracefulShutdown('discord'));
     } catch (e) {
       console.log("Discord error:", e.message);

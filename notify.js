@@ -37,6 +37,9 @@ let message = null;
 let startTime = Date.now();
 let interval = null;
 
+// stats object — server.js จะ inject ผ่าน setStats()
+let stats = { r2_uploads: 0, r2_downloads: 0, r2_deletes: 0 };
+
 // ── Persist message ID to disk so we can delete it even after crash/kill ──
 const nodePath = require("path");
 const nodeFs   = require("fs");
@@ -114,18 +117,16 @@ function buildEmbed() {
     color: 0x3498db,
     fields: [
       { name: "⚙️ Status", value: "🟢 Online", inline: true },
-      { name: "🕒 Time", value: getThaiTime(), inline: true },
-      { name: "⏱️ Uptime", value: uptime(), inline: true },
+      { name: "🕒 Time",   value: getThaiTime(), inline: true },
+      { name: "⏱️ Uptime", value: uptime(),      inline: true },
 
-      { name: "🧠 RAM Usage", value: memoryUsage(), inline: true },
-      { name: "💻 CPU Load", value: cpuUsage(), inline: true },
-      { name: "🌐 IP", value: getLocalIP(), inline: false },
+      { name: "☁️ R2 Uploads",   value: String(stats.r2_uploads   || 0), inline: true },
+      { name: "⬇️ R2 Downloads", value: String(stats.r2_downloads || 0), inline: true },
+      { name: "🗑️ R2 Deletes",   value: String(stats.r2_deletes   || 0), inline: true },
 
       ...(domain ? [{ name: "🔗 Domain", value: domain, inline: false }] : []),
     ],
-    footer: {
-      text: "Auto-updating every 5 seconds",
-    },
+    footer: { text: "Auto-updating every 5 seconds" },
     timestamp: new Date(),
   };
 }
@@ -309,8 +310,8 @@ client.on(Events.MessageCreate, async (msg) => {
       '`!status`   — ดูสถานะ server',
       '`!help`     — แสดง commands',
     ].join('\n')).catch(() => null);
-    deleteAfter(msg, 60_000);        // ลบคำสั่งหลัง 1 นาที
-    if (reply) deleteAfter(reply, 60_000); // ลบ reply หลัง 1 นาที
+    deleteAfter(msg, 15_000);        // ลบคำสั่งหลัง 1 นาที
+    if (reply) deleteAfter(reply, 15_000); // ลบ reply หลัง 1 นาที
     return;
   }
 });
@@ -376,6 +377,7 @@ client.on(Events.MessageCreate, async (msg) => {
 async function sendOnline() { /* dashboard created on ready */ }
 async function sendOffline() { await stop(); }
 function setShutdownCallback(cb) { shutdownCallback = cb; }
-module.exports = { sendOnline, sendOffline, setShutdownCallback };
+function setStats(s) { stats = s; } // server.js ส่ง stats object มาให้ (same reference)
+module.exports = { sendOnline, sendOffline, setShutdownCallback, setStats };
 
 client.login(token);
