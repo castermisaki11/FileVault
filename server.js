@@ -247,6 +247,63 @@ app.delete('/api/folders', async (req,res) => {
   } catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 
+// ── Folder Lock API ──
+const crypto = require('crypto');
+const folderLocks = readData('folder-locks', {}); // { folderPath: { hash, hint } }
+function hashPin(pin) { return crypto.createHash('sha256').update('fv-lock:'+pin).digest('hex'); }
+
+// GET /api/lock — list all locked folders
+app.get('/api/lock', (req, res) => {
+  const list = Object.keys(folderLocks).map(f => ({ folder: f, hint: folderLocks[f].hint||'' }));
+  res.json({ ok: true, locks: list });
+});
+
+// POST /api/lock — set password on folder
+app.post('/api/lock', (req, res) => {
+  const { folder, pin, hint } = req.body||{};
+  if (!folder) return res.status(400).json({ ok:false, error:'ต้องระบุ folder' });
+  if (!pin || pin.length < 4) return res.status(400).json({ ok:false, error:'รหัสต้องมีอย่างน้อย 4 ตัว' });
+  folderLocks[folder] = { hash: hashPin(String(pin)), hint: hint||'' };
+  writeData('folder-locks', folderLocks);
+  res.json({ ok: true });
+});
+
+// DELETE /api/lock — remove password from folder
+app.delete('/api/lock', (req, res) => {
+  const { folder, pin } = req.body||{};
+  if (!folder) return res.status(400).json({ ok:false, error:'ต้องระบุ folder' });
+  const lock = folderLocks[folder];
+  if (!lock) return res.status(404).json({ ok:false, error:'folder นี้ไม่มีรหัส' });
+  if (!pin || hashPin(String(pin)) !== lock.hash) return res.status(403).json({ ok:false, error:'รหัสไม่ถูกต้อง' });
+  delete folderLocks[folder];
+  writeData('folder-locks', folderLocks);
+  res.json({ ok: true });
+});
+
+// POST /api/lock/verify — check pin (returns token stored in session via cookie-like header)
+app.post('/api/lock/verify', (req, res) => {
+  const { folder, pin } = req.body||{};
+  const lock = folderLocks[folder];
+  if (!lock) return res.json({ ok:true, unlocked:true }); // not locked
+  if (!pin || hashPin(String(pin)) !== lock.hash) return res.status(403).json({ ok:false, error:'รหัสไม่ถูกต้อง' });
+  res.json({ ok:true, unlocked:true });
+});
+
+// Middleware: protect file access to locked folders
+function checkFolderLock(req, res, next) {
+  const folder = req.query.folder || req.body?.folder || '';
+  if (!folder || !folderLocks[folder]) return next();
+  // Check X-Folder-Pin header
+  const pin = req.headers['x-folder-pin'];
+  if (!pin || hashPin(String(pin)) !== folderLocks[folder].hash) {
+    return res.status(403).json({ ok:false, error:'🔒 folder นี้ถูกล็อค', locked:true, folder });
+  }
+  next();
+}
+
+// Apply lock middleware to file routes
+app.use(['/api/files', '/api/download', '/api/upload', '/api/delete', '/api/move', '/api/rename'], checkFolderLock);
+
 // FILES LIST
 app.get('/api/files', async (req,res) => {
   try {

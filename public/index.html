@@ -208,6 +208,70 @@
   </div>
 </div>
 
+<!-- LOCK MODAL: unlock to enter folder -->
+<div class="modal-bg hidden" id="lock-modal">
+  <div class="modal-sheet" style="max-height:auto">
+    <div class="modal-handle"></div>
+    <div class="modal-head">
+      <div class="modal-head-info">
+        <span class="modal-ficon">🔒</span>
+        <div>
+          <div class="modal-title">Folder ถูกล็อค</div>
+          <div class="modal-meta"><span id="lock-folder-name" class="modal-meta-txt"></span></div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeLockModal()">✕</button>
+    </div>
+    <div style="padding:16px 16px 4px">
+      <div id="lock-hint" class="lock-hint hidden"></div>
+      <div class="lock-pin-wrap">
+        <input id="lock-pin-input" class="lock-pin-input" type="password" inputmode="numeric" placeholder="ใส่รหัส..." maxlength="32" onkeydown="if(event.key==='Enter')submitLockPin()"/>
+        <button class="lock-pin-eye" onclick="togglePinEye()" id="pin-eye-btn">👁</button>
+      </div>
+      <div id="lock-error" class="lock-error hidden">❌ รหัสไม่ถูกต้อง</div>
+    </div>
+    <div class="modal-actions">
+      <button class="tbtn tbtn-blue" onclick="submitLockPin()">🔓 ปลดล็อค</button>
+      <button class="tbtn tbtn-gray" onclick="closeLockModal()">ยกเลิก</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOCK SETTINGS MODAL: set/remove lock on folder -->
+<div class="modal-bg hidden" id="lock-settings-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-head">
+      <div class="modal-head-info">
+        <span class="modal-ficon" id="lset-icon">🔐</span>
+        <div>
+          <div class="modal-title" id="lset-title">ตั้งรหัส Folder</div>
+          <div class="modal-meta"><span id="lset-folder-name" class="modal-meta-txt"></span></div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeLockSettings()">✕</button>
+    </div>
+    <div id="lset-body" style="padding:16px 16px 4px">
+      <!-- set lock -->
+      <div id="lset-set">
+        <input id="lset-pin" class="lock-pin-input" type="password" placeholder="รหัสใหม่ (อย่างน้อย 4 ตัว)" maxlength="32"/>
+        <input id="lset-hint" class="lock-hint-input" type="text" placeholder="Hint (ไม่บังคับ)" maxlength="40"/>
+      </div>
+      <!-- remove lock -->
+      <div id="lset-remove" class="hidden">
+        <div style="font-size:.85rem;color:var(--t2);margin-bottom:10px">ใส่รหัสเดิมเพื่อถอดล็อค</div>
+        <input id="lset-old-pin" class="lock-pin-input" type="password" placeholder="รหัสเดิม" maxlength="32"/>
+      </div>
+      <div id="lset-error" class="lock-error hidden"></div>
+    </div>
+    <div class="modal-actions" id="lset-actions">
+      <button class="tbtn tbtn-blue" id="lset-confirm-btn" onclick="confirmLockSettings()">🔒 ตั้งรหัส</button>
+      <button class="tbtn tbtn-red hidden" id="lset-remove-btn" onclick="openRemoveLock()">🔓 ถอดล็อค</button>
+      <button class="tbtn tbtn-gray" onclick="closeLockSettings()">ยกเลิก</button>
+    </div>
+  </div>
+</div>
+
 <!-- PROGRESS -->
 <div id="prog-ov" class="prog-ov hidden">
   <div class="prog-inner">

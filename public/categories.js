@@ -63,6 +63,7 @@ window.addEventListener('load', () => {
   if (saved !== null) currentFolder = saved;
   loadFolders();
   loadFiles();
+  loadLocks();
   setupDragDrop();
   setupKeyboard();
   updateBreadcrumb();
@@ -158,8 +159,22 @@ function renderFolderSidebar() {
   allFolders.forEach(f => {
     const depth = f.path.split('/').length - 1;
     const icon  = folderIcons[f.name.toLowerCase()]||'📂';
-    const item  = mkItem(f.name, icon, f.path, currentFolder===f.path, f.fileCount||null);
+    const locked = isFolderLocked(f.path);
+    const unlocked = isFolderUnlocked(f.path);
+    const lockIcon = locked ? (unlocked ? ' 🔓' : ' 🔒') : '';
+    const item  = mkItem(f.name + lockIcon, icon, f.path, currentFolder===f.path, f.fileCount||null);
     item.style.paddingLeft = (12 + depth*14) + 'px';
+    // intercept click to require unlock
+    item.onclick = e => {
+      if (locked && !unlocked) { requireUnlock(f.path, () => navigateFolder(f.path)); }
+      else navigateFolder(f.path);
+    };
+
+    // Lock button
+    const lockBtn = document.createElement('button');
+    lockBtn.className = 'folder-action-btn'; lockBtn.title = locked ? 'จัดการรหัส' : 'ตั้งรหัส'; lockBtn.textContent = locked ? '🔐' : '🔒';
+    lockBtn.onclick = e => { e.stopPropagation(); openLockSettings(f.path); };
+    item.appendChild(lockBtn);
 
     // Rename button
     const renBtn = document.createElement('button');
@@ -184,6 +199,10 @@ function renderFolderSidebar() {
 }
 
 async function navigateFolder(folder) {
+  if (folder && isFolderLocked(folder) && !isFolderUnlocked(folder)) {
+    requireUnlock(folder, () => navigateFolder(folder));
+    return;
+  }
   currentFolder = folder;
   localStorage.setItem('fv-folder', folder);
   currentCat = 'all';
@@ -268,12 +287,18 @@ async function loadFiles() {
   try {
     const qs = currentFolder ? '?folder='+encodeURIComponent(currentFolder) : '';
     const d  = await apiFetch('/api/files'+qs);
+    if (d.locked) {
+      // folder locked and pin not provided — show lock prompt
+      allFiles = [];
+      updateCounts();
+      renderFiles([]);
+      requireUnlock(currentFolder, () => loadFiles());
+      return;
+    }
     if (d.ok) {
       allFiles = (d.files||[]).filter(f=>!f.isDir);
       const subDirs = (d.files||[]).filter(f=>f.isDir);
-      allFiles.filter(f=>getFileCat(f.name)==='zip').forEach(f=>{
-        if (!zipStore[f.name]) zipStore[f.name]={name:f.name,size:f.size,fileCount:'?',files:[],created:f.modified};
-      });
+      allFiles.filter(f=>getFileCat(f.name)==='zip').forEach(f=>{\n        if (!zipStore[f.name]) zipStore[f.name]={name:f.name,size:f.size,fileCount:'?',files:[],created:f.modified};\n      });
       updateCounts();
       renderFiles(subDirs);
     }
@@ -886,7 +911,134 @@ function toast(msg,err=false){
 }
 
 async function apiFetch(url,opts={}){
-  const options={method:opts.method||'GET',headers:{...(opts.body?{'Content-Type':'application/json'}:{})}};
+  const folderParam = new URLSearchParams(url.split('?')[1]||'').get('folder') || opts.body?.folder || '';
+  const pin = folderParam ? (unlockedFolders[folderParam]||'') : '';
+  const options={method:opts.method||'GET',headers:{
+    ...(opts.body?{'Content-Type':'application/json'}:{}),
+    ...(pin?{'X-Folder-Pin':pin}:{})
+  }};
   if(opts.body) options.body=JSON.stringify(opts.body);
   const r=await fetch(API+url,options); return r.json();
+}
+
+// ── Folder Lock System ──
+const unlockedFolders = {}; // { folderPath: pin }
+let lockedFoldersList = []; // from server
+let lockModalCallback = null;
+let lockSettingsTarget = null;
+
+async function loadLocks() {
+  try { const d=await fetch('/api/lock'); const j=await d.json(); if(j.ok) lockedFoldersList=j.locks||[]; } catch{}
+}
+
+function isFolderLocked(folder) { return lockedFoldersList.some(l=>l.folder===folder); }
+function isFolderUnlocked(folder) { return !!unlockedFolders[folder]; }
+
+function requireUnlock(folder, onSuccess) {
+  if (!isFolderLocked(folder) || isFolderUnlocked(folder)) { onSuccess(); return; }
+  lockModalCallback = onSuccess;
+  document.getElementById('lock-folder-name').textContent = '📂 '+folder;
+  document.getElementById('lock-pin-input').value = '';
+  document.getElementById('lock-error').classList.add('hidden');
+  const lock = lockedFoldersList.find(l=>l.folder===folder);
+  const hint = document.getElementById('lock-hint');
+  if (lock?.hint) { hint.textContent = '💡 Hint: '+lock.hint; hint.classList.remove('hidden'); }
+  else hint.classList.add('hidden');
+  document.getElementById('lock-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('lock-pin-input').focus(), 100);
+}
+
+async function submitLockPin() {
+  const folder = document.getElementById('lock-folder-name').textContent.replace('📂 ','');
+  const pin = document.getElementById('lock-pin-input').value;
+  const errEl = document.getElementById('lock-error');
+  errEl.classList.add('hidden');
+  const d = await fetch('/api/lock/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({folder, pin})}).then(r=>r.json());
+  if (d.ok && d.unlocked) {
+    unlockedFolders[folder] = pin;
+    closeLockModal();
+    toast('🔓 ปลดล็อคแล้ว');
+    if (lockModalCallback) { lockModalCallback(); lockModalCallback=null; }
+  } else {
+    errEl.classList.remove('hidden');
+    document.getElementById('lock-pin-input').value='';
+    document.getElementById('lock-pin-input').focus();
+  }
+}
+
+function closeLockModal() {
+  document.getElementById('lock-modal').classList.add('hidden');
+  lockModalCallback = null;
+}
+
+function togglePinEye() {
+  const inp = document.getElementById('lock-pin-input');
+  inp.type = inp.type==='password' ? 'text' : 'password';
+}
+
+async function openLockSettings(folder) {
+  lockSettingsTarget = folder;
+  document.getElementById('lset-folder-name').textContent = '📂 '+folder;
+  const isLocked = isFolderLocked(folder);
+  document.getElementById('lset-icon').textContent = isLocked ? '🔐' : '🔒';
+  document.getElementById('lset-title').textContent = isLocked ? 'จัดการรหัส Folder' : 'ตั้งรหัส Folder';
+  document.getElementById('lset-set').classList.toggle('hidden', isLocked);
+  document.getElementById('lset-remove').classList.toggle('hidden', !isLocked);
+  document.getElementById('lset-confirm-btn').disabled = isLocked;
+  document.getElementById('lset-confirm-btn').textContent = isLocked ? '— ถอดล็อคก่อนเพื่อตั้งรหัสใหม่' : '🔒 ตั้งรหัส';
+  document.getElementById('lset-remove-btn').classList.toggle('hidden', !isLocked);
+  document.getElementById('lset-error').classList.add('hidden');
+  document.getElementById('lset-pin').value='';
+  document.getElementById('lset-hint').value='';
+  document.getElementById('lset-old-pin').value='';
+  // reset remove btn
+  document.getElementById('lset-remove-btn').textContent='🔓 ถอดล็อค';
+  document.getElementById('lset-remove-btn').onclick = openRemoveLock;
+  document.getElementById('lset-confirm-btn').classList.remove('hidden');
+  document.getElementById('lock-settings-modal').classList.remove('hidden');
+}
+
+async function confirmLockSettings() {
+  const folder = lockSettingsTarget;
+  const pin = document.getElementById('lset-pin').value;
+  const hint = document.getElementById('lset-hint').value;
+  const errEl = document.getElementById('lset-error');
+  errEl.classList.add('hidden');
+  if (!pin || pin.length < 4) { errEl.textContent='รหัสต้องมีอย่างน้อย 4 ตัว'; errEl.classList.remove('hidden'); return; }
+  const d = await fetch('/api/lock', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({folder, pin, hint})}).then(r=>r.json());
+  if (d.ok) {
+    unlockedFolders[folder] = pin;
+    await loadLocks();
+    renderFolders();
+    closeLockSettings();
+    toast('🔒 ตั้งรหัสแล้ว');
+  } else { errEl.textContent=d.error||'เกิดข้อผิดพลาด'; errEl.classList.remove('hidden'); }
+}
+
+function openRemoveLock() {
+  document.getElementById('lset-set').classList.add('hidden');
+  document.getElementById('lset-remove').classList.remove('hidden');
+  document.getElementById('lset-confirm-btn').classList.add('hidden');
+  document.getElementById('lset-remove-btn').textContent='✅ ยืนยันถอดล็อค';
+  document.getElementById('lset-remove-btn').onclick = confirmRemoveLock;
+}
+
+async function confirmRemoveLock() {
+  const folder = lockSettingsTarget;
+  const pin = document.getElementById('lset-old-pin').value;
+  const errEl = document.getElementById('lset-error');
+  errEl.classList.add('hidden');
+  const d = await fetch('/api/lock', {method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({folder, pin})}).then(r=>r.json());
+  if (d.ok) {
+    delete unlockedFolders[folder];
+    await loadLocks();
+    renderFolders();
+    closeLockSettings();
+    toast('🔓 ถอดล็อคแล้ว');
+  } else { errEl.textContent=d.error||'รหัสไม่ถูกต้อง'; errEl.classList.remove('hidden'); }
+}
+
+function closeLockSettings() {
+  document.getElementById('lock-settings-modal').classList.add('hidden');
+  lockSettingsTarget = null;
 }
