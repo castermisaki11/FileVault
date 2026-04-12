@@ -24,6 +24,30 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+function startServer(port) {
+  const server = http.createServer(app);
+
+  app.set("server", server);
+
+  server.listen(port, "0.0.0.0", async () => {
+    console.log("Server started on port", port);
+
+    try {
+      await sendOnline?.();
+    } catch (e) {
+      console.log("Discord error:", e.message);
+    }
+  });
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.log(`Port ${port} busy → trying ${port + 1}`);
+      startServer(port + 1);
+    } else {
+      console.error(err);
+    }
+  });
+}
 
 const CONFIG = {
   STORAGE_LIMIT:   process.env.FV_STORAGE_LIMIT || '5gb',
@@ -325,15 +349,46 @@ app.delete('/api/folders', async (req,res) => {
 });
 
 const crypto = require('crypto');
-const folderLocks = readData('folder-locks', {});
+let folderLocks = readData('folder-locks', {}); // local fallback ก่อน
 function hashPin(pin) { return crypto.createHash('sha256').update('fv-lock:'+pin).digest('hex'); }
+
+const LOCKS_KEY = process.env.FV_LOCKS_KEY || 'system/folder-locks.json';
+
+// บันทึก folderLocks ขึ้น R2 + local พร้อมกัน
+async function saveLocks() {
+  writeData('folder-locks', folderLocks); // local backup
+  try {
+    const buf = Buffer.from(JSON.stringify(folderLocks, null, 2), 'utf8');
+    await r2.uploadObject(LOCKS_KEY, buf, 'application/json');
+  } catch (e) {
+    console.warn('⚠ [locks] R2 save error:', e.message);
+  }
+}
+
+// โหลด folderLocks จาก R2 (เรียกตอน server ready)
+async function loadLocksFromR2() {
+  try {
+    const obj = await r2.downloadObject(LOCKS_KEY);
+    const remote = JSON.parse(obj.buffer.toString('utf8'));
+    // merge: remote เป็นหลัก (ข้อมูลใหม่กว่า local)
+    Object.assign(folderLocks, remote);
+    writeData('folder-locks', folderLocks);
+    console.log('🔒 [locks] Loaded from R2:', Object.keys(folderLocks).length, 'locks');
+  } catch (e) {
+    if (e.$metadata?.httpStatusCode === 404 || e.name === 'NoSuchKey' || e.Code === 'NoSuchKey') {
+      console.log('🔒 [locks] No remote locks found — using local');
+    } else {
+      console.warn('⚠ [locks] R2 load error:', e.message, '— using local fallback');
+    }
+  }
+}
 
 app.get('/api/lock', (req, res) => {
   const list = Object.keys(folderLocks).map(f => ({ folder: f, hint: folderLocks[f].hint||'' }));
   res.json({ ok: true, locks: list });
 });
 
-app.post('/api/lock', (req, res) => {
+app.post('/api/lock', async (req, res) => {
   const { folder, pin, hint } = req.body || {};
 
   if (!folder) {
@@ -352,18 +407,18 @@ app.post('/api/lock', (req, res) => {
     hint: hint || ''
   };
 
-  writeData('folder-locks', folderLocks);
+  await saveLocks();
   res.json({ ok: true });
 });
 
-app.delete('/api/lock', (req, res) => {
+app.delete('/api/lock', async (req, res) => {
   const { folder, pin } = req.body||{};
   if (!folder) return res.status(400).json({ ok:false, error:'ต้องระบุ folder' });
   const lock = folderLocks[folder];
   if (!lock) return res.status(404).json({ ok:false, error:'folder นี้ไม่มีรหัส' });
   if (!pin || hashPin(String(pin)) !== lock.hash) return res.status(403).json({ ok:false, error:'รหัสไม่ถูกต้อง' });
   delete folderLocks[folder];
-  writeData('folder-locks', folderLocks);
+  await saveLocks();
   res.json({ ok: true });
 });
 
@@ -750,6 +805,9 @@ function startServer(port) {
     } catch (e) {
       console.warn('⚠ R2 stats sync init failed:', e.message);
     }
+
+    // ── R2 folder locks sync ──
+    await loadLocksFromR2();
 
     if (CONFIG.STATUS_INTERVAL > 0) {
       printStatus();
