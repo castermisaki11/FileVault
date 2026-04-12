@@ -10,7 +10,7 @@ const { execSync } = require('child_process');
 const { sendOnline, sendOffline, setShutdownCallback, setStats } = require("./notify");
 const r2 = require('./r2');
 // bot
-require('./bot.js')
+// bot.js merged into notify.js
 const readline = require("readline");
 
 const app = express(); 
