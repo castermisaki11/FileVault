@@ -106,9 +106,15 @@ function buildEmbed() {
     title: "📊 REALTIME SERVER DASHBOARD",
     color: 0x3498db,
     fields: [
-      { name: "⚙️ Status", value: "🟢 Online",  inline: true },
-      { name: "🕒 Time",   value: getThaiTime(), inline: true },
-      { name: "⏱️ Uptime", value: uptime(),      inline: true },
+      { name: "⚙️ Status",  value: "🟢 Online",   inline: true },
+      { name: "🕒 Time",    value: getThaiTime(), inline: true },
+      { name: "⏱️ Uptime",  value: uptime(),      inline: true },
+      { name: "📨 Requests",  value: String(stats.requests   || 0), inline: true },
+      { name: "📤 Uploads",   value: String(stats.uploads    || 0), inline: true },
+      { name: "📥 Downloads", value: String(stats.downloads  || 0), inline: true },
+      { name: "🗑️ Deletes",  value: String(stats.deletes    || 0), inline: true },
+      { name: "⚠️ Errors",   value: String(stats.errors     || 0), inline: true },
+      { name: "↔️ Moves",    value: String(stats.moves      || 0), inline: true },
       { name: "☁️ R2 Uploads",   value: String(stats.r2_uploads   || 0), inline: true },
       { name: "⬇️ R2 Downloads", value: String(stats.r2_downloads || 0), inline: true },
       { name: "🗑️ R2 Deletes",   value: String(stats.r2_deletes   || 0), inline: true },
@@ -237,7 +243,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (commandName === "r2stats") {
     await interaction.deferReply({ flags: 64 });
     try {
-      const files = await r2.listObjects("");
+      const result = await r2.searchObjects(""); // scan ทั้ง bucket ได้ count จริง
+      const files = result;
       const count = files.length;
       const totalBytes = files.reduce((s, f) => s + (f.size || 0), 0);
       const fmt = (b) => b >= 1_073_741_824 ? (b/1_073_741_824).toFixed(2)+" GB"
@@ -255,9 +262,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const folder = interaction.options.getString("folder") || "";
       const limit  = interaction.options.getInteger("limit") || 10;
-      const files  = await r2.listObjects(folder);
+      const result = await r2.listObjects(folder);
+      const files  = result.files;
       if (!files.length) { await interaction.editReply({ content: "📂 ไม่พบไฟล์" }); return; }
-      const recent = files.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified)).slice(0, limit);
+      const recent = files.sort((a, b) => new Date(b.modified) - new Date(a.modified)).slice(0, limit);
       const fmt = (b) => b >= 1_048_576 ? (b/1_048_576).toFixed(1)+"MB" : b >= 1024 ? (b/1024).toFixed(0)+"KB" : b+"B";
       const lines = recent.map((f, i) => `\`${i+1}.\` \`${f.key}\` — ${fmt(f.size||0)}`);
       await interaction.editReply({ content: `**📋 R2 Files** (${recent.length}/${files.length})\n${lines.join("\n")}` });
@@ -285,8 +293,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const days   = interaction.options.getInteger("days");
       const folder = interaction.options.getString("folder") || "";
       const cutoff = Date.now() - days * 86_400_000;
-      const files  = await r2.listObjects(folder);
-      const old    = files.filter((f) => new Date(f.lastModified).getTime() < cutoff);
+      const files  = await r2.searchObjects(folder); // scan จริง ไม่ติด Delimiter
+      const old    = files.filter((f) => new Date(f.modified).getTime() < cutoff);
       if (!old.length) { await interaction.editReply({ content: `✅ ไม่มีไฟล์เก่ากว่า ${days} วัน` }); return; }
       for (const f of old) await r2.deleteObject(f.key);
       await interaction.editReply({ content: `🗑️ ลบ **${old.length}** ไฟล์ที่เก่ากว่า ${days} วันแล้ว` });

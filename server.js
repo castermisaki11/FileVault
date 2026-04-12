@@ -9,6 +9,7 @@ const http    = require('http');
 const { execSync } = require('child_process');
 const { sendOnline, sendOffline, setShutdownCallback, setStats } = require("./notify");
 const r2 = require('./r2');
+const statsSync = require('./stats-sync');
 // bot
 // bot.js merged into notify.js
 const readline = require("readline");
@@ -23,30 +24,6 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-function startServer(port) {
-  const server = http.createServer(app);
-
-  app.set("server", server);
-
-  server.listen(port, "0.0.0.0", async () => {
-    console.log("Server started on port", port);
-
-    try {
-      await sendOnline?.();
-    } catch (e) {
-      console.log("Discord error:", e.message);
-    }
-  });
-
-  server.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.log(`Port ${port} busy → trying ${port + 1}`);
-      startServer(port + 1);
-    } else {
-      console.error(err);
-    }
-  });
-}
 
 const CONFIG = {
   STORAGE_LIMIT:   process.env.FV_STORAGE_LIMIT || '5gb',
@@ -119,8 +96,9 @@ function getDirSizeRecursive(dir) {
 const dataFile  = n => path.join(DATA_DIR, n+'.json');
 const readData  = (n,d) => { try { return JSON.parse(fs.readFileSync(dataFile(n),'utf8')); } catch { return d; } };
 const writeData = (n,v) => fs.writeFileSync(dataFile(n), JSON.stringify(v,null,2));
+// stats เริ่มจาก local ก่อน (sync ถ้า R2 ยังไม่พร้อม) แล้ว merge กับ R2 ตอน server ready
 let stats = readData('stats', { requests:0, uploads:0, downloads:0, deletes:0, errors:0, moves:0, r2_uploads:0, r2_downloads:0, r2_deletes:0 });
-setInterval(() => writeData('stats', stats), 10_000);
+setInterval(() => writeData('stats', stats), 10_000); // local backup ทุก 10s ยังคงอยู่
 
 function getUploadDirSize() { return getDirSizeRecursive(UPLOAD_DIR); }
 function getStorageInfo() {
@@ -690,6 +668,7 @@ async function gracefulShutdown(reason = 'manual') {
   isShuttingDown = true;
   console.log(`\n🛑 Shutting down... (reason: ${reason})`);
   writeData('stats', stats);
+  try { await statsSync.stopSync(); } catch {}   // flush stats → R2
   try { await sendOffline?.(); } catch {}
   const server = app.get('server');
   if (server) server.close(() => process.exit(0));
@@ -756,6 +735,20 @@ function startServer(port) {
       setShutdownCallback?.(() => gracefulShutdown('discord'));
     } catch (e) {
       console.log("Discord error:", e.message);
+    }
+
+    // ── R2 stats sync ──
+    try {
+      const remote = await statsSync.loadStats(stats);
+      for (const k of Object.keys(remote)) {
+        if (typeof remote[k] === 'number' && typeof stats[k] === 'number') {
+          stats[k] = Math.max(stats[k], remote[k]); // เอาค่าที่มากกว่า
+        }
+      }
+      writeData('stats', stats);
+      statsSync.startSync(stats);
+    } catch (e) {
+      console.warn('⚠ R2 stats sync init failed:', e.message);
     }
 
     if (CONFIG.STATUS_INTERVAL > 0) {
