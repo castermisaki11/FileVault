@@ -1,28 +1,35 @@
 # Dependencies
 node_modules/
 
-# Environment
+# Environment variables
 .env
 .env.local
-
-# Runtime data
-uploads/
-data/
-dumps/
-
-# Logs
-npm-debug.log
-*.log
-
-# Temp / backup
-*.bak
-
-# Files referenced in old gitignore but not needed
-git.md
-log.js
-stop.js
+.env.*.local
 .ATEST
 
-# OS
+# Uploaded files
+uploads/
+filevault-server.zip
+
+# Database dumps
+dumps/
+
+# Local data
+data/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Build / cache
+.cache/
+dist/

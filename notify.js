@@ -1,5 +1,12 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, Events } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Events,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+} = require("discord.js");
 const os = require("os");
 const https = require("https");
 const http = require("http");
@@ -227,6 +234,8 @@ async function cleanupExtraDashboards(channel) {
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
+  await registerCommands();
+
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel) return console.log("❌ Channel not found");
 
@@ -251,42 +260,63 @@ process.on("SIGTERM", async () => {
 });
 
 // ───────────────
-// 💬 COMMAND HANDLER (!shutdown, !status)
+// 📋 REGISTER SLASH COMMANDS
+// ───────────────
+async function registerCommands() {
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("shutdown")
+      .setDescription("ปิด FileVault Server"),
+
+    new SlashCommandBuilder()
+      .setName("status")
+      .setDescription("ดูสถานะ server แบบ realtime"),
+
+    new SlashCommandBuilder()
+      .setName("locks")
+      .setDescription("ดาวน์โหลดไฟล์ folder-locks.json"),
+
+    new SlashCommandBuilder()
+      .setName("help")
+      .setDescription("แสดง commands ทั้งหมด"),
+  ];
+
+  const rest = new REST({ version: "10" }).setToken(token);
+  const clientId = process.env.DISCORD_CLIENT_ID;
+
+  await rest.put(Routes.applicationCommands(clientId), {
+    body: commands.map((c) => c.toJSON()),
+  });
+
+  console.log("✅ Registered Slash Commands (/shutdown /status /locks /help)");
+}
+
+// ───────────────
+// 💬 SLASH COMMAND HANDLER (/shutdown /status /locks /help)
 // ───────────────
 const ADMIN_IDS = (process.env.DISCORD_ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
 
 function isAdmin(userId) {
-  // ถ้าไม่ได้ตั้ง DISCORD_ADMIN_IDS → ทุกคนใน channel สั่งได้
+  // ถ้าไม่ได้ตั้ง DISCORD_ADMIN_IDS → ทุกคนสั่งได้
   if (!ADMIN_IDS.length) return true;
   return ADMIN_IDS.includes(userId);
 }
 
 let shutdownCallback = null; // server.js จะ inject callback นี้
 
-// helper: ลบ message หลังหน่วงเวลา (ms)
-function deleteAfter(m, ms) {
-  setTimeout(() => m.delete().catch(() => {}), ms);
-}
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
 
-client.on(Events.MessageCreate, async (msg) => {
-  if (msg.author.bot) return;
-  if (msg.channelId !== channelId) return;
-  if (!msg.content.startsWith('!')) return;
+  const { commandName, user } = interaction;
 
-  const cmd = msg.content.trim().toLowerCase();
-
-  // ── !shutdown ──
-  if (cmd === '!shutdown') {
-    if (!isAdmin(msg.author.id)) {
-      const reply = await msg.reply('❌ คุณไม่มีสิทธิ์สั่งปิด server').catch(() => null);
-      deleteAfter(msg, 5_000);
-      if (reply) deleteAfter(reply, 5_000);
+  // ── /shutdown ──
+  if (commandName === 'shutdown') {
+    if (!isAdmin(user.id)) {
+      await interaction.reply({ content: '❌ คุณไม่มีสิทธิ์สั่งปิด server', flags: 64 });
       return;
     }
-    const reply = await msg.reply('🛑 กำลังปิด FileVault Server...').catch(() => null);
-    deleteAfter(msg, 3_000);
-    if (reply) deleteAfter(reply, 3_000);
-    console.log(`🛑 Shutdown triggered by Discord: ${msg.author.tag}`);
+    await interaction.reply({ content: '🛑 กำลังปิด FileVault Server...', flags: 64 });
+    console.log(`🛑 Shutdown triggered by Discord: ${user.tag}`);
     setTimeout(() => {
       if (shutdownCallback) shutdownCallback();
       else process.kill(process.pid, 'SIGTERM');
@@ -294,56 +324,47 @@ client.on(Events.MessageCreate, async (msg) => {
     return;
   }
 
-  // ── !status ──
-  if (cmd === '!status') {
-    const reply = await msg.reply({ embeds: [buildEmbed()] }).catch(() => null);
-    deleteAfter(msg, 10_000);
-    if (reply) deleteAfter(reply, 10_000);
+  // ── /status ──
+  if (commandName === 'status') {
+    await interaction.reply({ embeds: [buildEmbed()], flags: 64 });
     return;
   }
 
-  // ── !locks ──
-  if (cmd === '!locks') {
-    if (!isAdmin(msg.author.id)) {
-      const reply = await msg.reply('❌ คุณไม่มีสิทธิ์').catch(() => null);
-      deleteAfter(msg, 5_000);
-      if (reply) deleteAfter(reply, 5_000);
+  // ── /locks ──
+  if (commandName === 'locks') {
+    if (!isAdmin(user.id)) {
+      await interaction.reply({ content: '❌ คุณไม่มีสิทธิ์', flags: 64 });
       return;
     }
     try {
       const fp = nodePath.join(__dirname, 'data', 'folder-locks.json');
       if (!nodeFs.existsSync(fp)) {
-        const reply = await msg.reply('📂 ยังไม่มี folder lock').catch(() => null);
-        deleteAfter(msg, 10_000);
-        if (reply) deleteAfter(reply, 10_000);
+        await interaction.reply({ content: '📂 ยังไม่มี folder lock', flags: 64 });
         return;
       }
-      const reply = await msg.reply({
+      await interaction.reply({
         content: '🔒 **folder-locks.json** (ลบข้อความนี้หลังบันทึกแล้วนะ)',
         files: [{ attachment: fp, name: 'folder-locks.json' }],
-      }).catch(() => null);
-      deleteAfter(msg, 20_000);
-      if (reply) deleteAfter(reply, 20_000);
+        flags: 64,
+      });
     } catch (e) {
-      const reply = await msg.reply('❌ Error: ' + e.message).catch(() => null);
-      deleteAfter(msg, 10_000);
-      if (reply) deleteAfter(reply, 10_000);
+      await interaction.reply({ content: '❌ Error: ' + e.message, flags: 64 });
     }
     return;
   }
 
-  // ── !help ──
-  if (cmd === '!help') {
-    const reply = await msg.reply([
-      '**📋 FileVault Bot Commands**',
-      '`!shutdown` — ปิด server',
-      '`!status`   — ดูสถานะ server',
-      '`!locks`    — ดาวน์โหลด folder-locks.json',
-      '`!help`     — แสดง commands',
-      '`!locks`     — โหลดไฟล์ folder-locks',
-    ].join('\n')).catch(() => null);
-    deleteAfter(msg, 15_000);        // ลบคำสั่งหลัง 1 นาที
-    if (reply) deleteAfter(reply, 15_000); // ลบ reply หลัง 1 นาที
+  // ── /help ──
+  if (commandName === 'help') {
+    await interaction.reply({
+      content: [
+        '**📋 FileVault Bot Commands**',
+        '`/shutdown` — ปิด server',
+        '`/status`   — ดูสถานะ server',
+        '`/locks`    — ดาวน์โหลด folder-locks.json',
+        '`/help`     — แสดง commands',
+      ].join('\n'),
+      flags: 64,
+    });
     return;
   }
 });
