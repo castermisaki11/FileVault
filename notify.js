@@ -21,6 +21,7 @@ const token       = process.env.DISCORD_TOKEN;
 const channelId   = process.env.CHANNEL_ID;
 const domain      = process.env.DOMAIN;
 const imageFolder = process.env.DISCORD_IMAGE_FOLDER || "discord-images";
+const fileFolder  = process.env.DISCORD_FILE_FOLDER  || "discord-files";
 
 // ───────────────
 // 🔧 CONFIG — Monitor bot (จาก bot.js)
@@ -183,12 +184,24 @@ async function registerFileVaultCommands() {
     new SlashCommandBuilder().setName("shutdown").setDescription("ปิด FileVault Server"),
     new SlashCommandBuilder().setName("status").setDescription("ดูสถานะ server แบบ realtime"),
     new SlashCommandBuilder().setName("locks").setDescription("ดาวน์โหลดไฟล์ folder-locks.json"),
+    new SlashCommandBuilder().setName("r2stats").setDescription("ดูจำนวนไฟล์และขนาดรวมใน R2"),
+    new SlashCommandBuilder().setName("r2list")
+      .setDescription("แสดง list ไฟล์ล่าสุดใน R2")
+      .addStringOption((o) => o.setName("folder").setDescription("folder prefix (เว้นว่าง = ทั้งหมด)").setRequired(false))
+      .addIntegerOption((o) => o.setName("limit").setDescription("จำนวนสูงสุด (default 10)").setRequired(false)),
+    new SlashCommandBuilder().setName("r2delete")
+      .setDescription("ลบไฟล์ใน R2 ด้วย key")
+      .addStringOption((o) => o.setName("key").setDescription("R2 key ของไฟล์").setRequired(true)),
+    new SlashCommandBuilder().setName("purge")
+      .setDescription("ลบไฟล์ใน R2 ที่เก่าเกิน N วัน")
+      .addIntegerOption((o) => o.setName("days").setDescription("จำนวนวัน (เช่น 30)").setRequired(true))
+      .addStringOption((o) => o.setName("folder").setDescription("folder prefix (เว้นว่าง = ทั้งหมด)").setRequired(false)),
     new SlashCommandBuilder().setName("help").setDescription("แสดง commands ทั้งหมด"),
   ];
   const rest = new REST({ version: "10" }).setToken(token);
   const clientId = process.env.DISCORD_CLIENT_ID;
   await rest.put(Routes.applicationCommands(clientId), { body: commands.map((c) => c.toJSON()) });
-  console.log("✅ [FileVault] Registered Slash Commands (/shutdown /status /locks /help)");
+  console.log("✅ [FileVault] Registered Slash Commands (/shutdown /status /locks /r2stats /r2list /r2delete /purge /help)");
 }
 
 // ───────────────
@@ -220,9 +233,80 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (e) { await interaction.reply({ content: "❌ Error: " + e.message, flags: 64 }); }
     return;
   }
+  // ─── /r2stats ───
+  if (commandName === "r2stats") {
+    await interaction.deferReply({ flags: 64 });
+    try {
+      const files = await r2.listObjects("");
+      const count = files.length;
+      const totalBytes = files.reduce((s, f) => s + (f.size || 0), 0);
+      const fmt = (b) => b >= 1_073_741_824 ? (b/1_073_741_824).toFixed(2)+" GB"
+                       : b >= 1_048_576      ? (b/1_048_576).toFixed(2)+" MB"
+                       : b >= 1024           ? (b/1024).toFixed(1)+" KB"
+                       : b+" B";
+      await interaction.editReply({ content: `**☁️ R2 Stats**\n📦 ไฟล์ทั้งหมด: **${count}** ไฟล์\n💾 ขนาดรวม: **${fmt(totalBytes)}**` });
+    } catch (e) { await interaction.editReply({ content: "❌ Error: " + e.message }); }
+    return;
+  }
+
+  // ─── /r2list ───
+  if (commandName === "r2list") {
+    await interaction.deferReply({ flags: 64 });
+    try {
+      const folder = interaction.options.getString("folder") || "";
+      const limit  = interaction.options.getInteger("limit") || 10;
+      const files  = await r2.listObjects(folder);
+      if (!files.length) { await interaction.editReply({ content: "📂 ไม่พบไฟล์" }); return; }
+      const recent = files.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified)).slice(0, limit);
+      const fmt = (b) => b >= 1_048_576 ? (b/1_048_576).toFixed(1)+"MB" : b >= 1024 ? (b/1024).toFixed(0)+"KB" : b+"B";
+      const lines = recent.map((f, i) => `\`${i+1}.\` \`${f.key}\` — ${fmt(f.size||0)}`);
+      await interaction.editReply({ content: `**📋 R2 Files** (${recent.length}/${files.length})\n${lines.join("\n")}` });
+    } catch (e) { await interaction.editReply({ content: "❌ Error: " + e.message }); }
+    return;
+  }
+
+  // ─── /r2delete ───
+  if (commandName === "r2delete") {
+    if (!isAdmin(user.id)) { await interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", flags: 64 }); return; }
+    await interaction.deferReply({ flags: 64 });
+    try {
+      const key = interaction.options.getString("key");
+      await r2.deleteObject(key);
+      await interaction.editReply({ content: `🗑️ ลบแล้ว: \`${key}\`` });
+    } catch (e) { await interaction.editReply({ content: "❌ Error: " + e.message }); }
+    return;
+  }
+
+  // ─── /purge ───
+  if (commandName === "purge") {
+    if (!isAdmin(user.id)) { await interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", flags: 64 }); return; }
+    await interaction.deferReply({ flags: 64 });
+    try {
+      const days   = interaction.options.getInteger("days");
+      const folder = interaction.options.getString("folder") || "";
+      const cutoff = Date.now() - days * 86_400_000;
+      const files  = await r2.listObjects(folder);
+      const old    = files.filter((f) => new Date(f.lastModified).getTime() < cutoff);
+      if (!old.length) { await interaction.editReply({ content: `✅ ไม่มีไฟล์เก่ากว่า ${days} วัน` }); return; }
+      for (const f of old) await r2.deleteObject(f.key);
+      await interaction.editReply({ content: `🗑️ ลบ **${old.length}** ไฟล์ที่เก่ากว่า ${days} วันแล้ว` });
+    } catch (e) { await interaction.editReply({ content: "❌ Error: " + e.message }); }
+    return;
+  }
+
   if (commandName === "help") {
     await interaction.reply({
-      content: ["**📋 FileVault Bot Commands**", "`/shutdown` — ปิด server", "`/status`   — ดูสถานะ server", "`/locks`    — ดาวน์โหลด folder-locks.json", "`/help`     — แสดง commands"].join("\n"),
+      content: [
+        "**📋 FileVault Bot Commands**",
+        "`/shutdown`        — ปิด server",
+        "`/status`          — ดูสถานะ server",
+        "`/locks`           — ดาวน์โหลด folder-locks.json",
+        "`/r2stats`         — ดูจำนวนไฟล์และขนาดรวมใน R2",
+        "`/r2list [folder] [limit]` — list ไฟล์ล่าสุดใน R2",
+        "`/r2delete <key>`  — ลบไฟล์ใน R2",
+        "`/purge <days> [folder]`   — ลบไฟล์เก่าเกิน N วัน",
+        "`/help`            — แสดง commands",
+      ].join("\n"),
       flags: 64,
     });
     return;
@@ -230,42 +314,69 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // ───────────────
-// 🖼️ AUTO-UPLOAD DISCORD IMAGES TO R2  (client เดียว — ไม่ duplicate อีกต่อไป)
+// 🖼️ AUTO-UPLOAD DISCORD ATTACHMENTS TO R2  (รูป → imageFolder, ไฟล์อื่น → fileFolder)
 // ───────────────
-const IMAGE_MIME = ["image/png","image/jpeg","image/gif","image/webp","image/bmp","image/tiff","image/avif","image/heic","image/svg+xml"];
+const IMAGE_MIME     = ["image/png","image/jpeg","image/gif","image/webp","image/bmp","image/tiff","image/avif","image/heic","image/svg+xml"];
+const IMAGE_EXT      = ["png","jpg","jpeg","gif","webp","bmp","avif","heic","svg"];
+
+// MIME map ครอบคลุมไฟล์ทั่วไป (fallback ถ้า Discord ไม่ส่ง contentType)
+const MIME_MAP = {
+  // images
+  jpg:"image/jpeg", jpeg:"image/jpeg", png:"image/png", gif:"image/gif",
+  webp:"image/webp", bmp:"image/bmp", avif:"image/avif", heic:"image/heic", svg:"image/svg+xml",
+  // documents
+  pdf:"application/pdf",
+  doc:"application/msword", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls:"application/vnd.ms-excel", xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt:"application/vnd.ms-powerpoint", pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  // text / code
+  txt:"text/plain", md:"text/markdown", csv:"text/csv", json:"application/json",
+  html:"text/html", htm:"text/html", xml:"application/xml", yaml:"text/yaml", yml:"text/yaml",
+  js:"text/javascript", ts:"text/typescript", py:"text/x-python",
+  // archives
+  zip:"application/zip", rar:"application/vnd.rar", "7z":"application/x-7z-compressed",
+  gz:"application/gzip", tar:"application/x-tar",
+  // media
+  mp4:"video/mp4", mov:"video/quicktime", avi:"video/x-msvideo", mkv:"video/x-matroska",
+  mp3:"audio/mpeg", wav:"audio/wav", ogg:"audio/ogg", flac:"audio/flac",
+};
+
+function isImage(att) {
+  const ct  = att.contentType || "";
+  const ext = att.name?.split(".").pop()?.toLowerCase() || "";
+  return IMAGE_MIME.some((m) => ct.startsWith(m)) || IMAGE_EXT.includes(ext);
+}
 
 client.on(Events.MessageCreate, async (msg) => {
   if (msg.author.bot) return;
+  if (msg.channel.id !== channelId) return;
   if (!msg.attachments.size) return;
 
-  const images = [...msg.attachments.values()].filter((a) => {
-    const ct  = a.contentType || "";
-    const ext = a.name?.split(".").pop()?.toLowerCase() || "";
-    return IMAGE_MIME.some((m) => ct.startsWith(m.split("/")[0] + "/" + m.split("/")[1])) ||
-           ["png","jpg","jpeg","gif","webp","bmp","avif","heic","svg"].includes(ext);
-  });
-  if (!images.length) return;
-
+  const attachments = [...msg.attachments.values()];
   let uploaded = 0;
-  for (const att of images) {
+
+  for (const att of attachments) {
     try {
       const { buffer, contentType: rawCt } = await downloadToBuffer(att.url);
       const timestamp   = Date.now();
       const safeName    = att.name.replace(/[^a-zA-Z0-9._\-ก-๙]/g, "_");
-      const key         = `${imageFolder}/${timestamp}_${safeName}`;
       const ext         = safeName.split(".").pop().toLowerCase();
-      const mimeMap     = { jpg:"image/jpeg", jpeg:"image/jpeg", png:"image/png", gif:"image/gif", webp:"image/webp", bmp:"image/bmp", avif:"image/avif", heic:"image/heic", svg:"image/svg+xml" };
-      const contentType = mimeMap[ext] || rawCt || "application/octet-stream";
+      const contentType = MIME_MAP[ext] || rawCt || att.contentType || "application/octet-stream";
+
+      // แยก folder: รูป → imageFolder, ไฟล์อื่น → fileFolder
+      const folder = isImage(att) ? imageFolder : fileFolder;
+      const key    = `${folder}/${timestamp}_${safeName}`;
+
       await r2.uploadObject(key, buffer, contentType);
       uploaded++;
-      console.log(`☁ Discord image uploaded → R2: ${key} [${contentType}]`);
-    } catch (e) { console.error(`❌ Failed to upload Discord image: ${att.name}`, e.message); }
+      console.log(`☁ Discord upload → R2: ${key} [${contentType}]`);
+    } catch (e) { console.error(`❌ Failed to upload Discord file: ${att.name}`, e.message); }
   }
 
   if (uploaded > 0) {
     try { await msg.react("☁"); } catch {}
     setTimeout(async () => {
-      try { await msg.delete(); console.log(`🗑 ลบรูปใน Discord แล้ว (message: ${msg.id})`); }
+      try { await msg.delete(); console.log(`🗑 ลบ message ใน Discord แล้ว (${msg.id})`); }
       catch (e) { console.error(`❌ ลบ message ไม่ได้: ${e.message}`); }
     }, 10_000);
   }
