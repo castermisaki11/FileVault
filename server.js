@@ -355,10 +355,24 @@ app.get('/api/lock', (req, res) => {
 });
 
 app.post('/api/lock', (req, res) => {
-  const { folder, pin, hint } = req.body||{};
-  if (!folder) return res.status(400).json({ ok:false, error:'ต้องระบุ folder' });
-  if (!pin || pin.length < 4) return res.status(400).json({ ok:false, error:'รหัสต้องมีอย่างน้อย 4 ตัว' });
-  folderLocks[folder] = { hash: hashPin(String(pin)), hint: hint||'' };
+  const { folder, pin, hint } = req.body || {};
+
+  if (!folder) {
+    return res.status(400).json({ ok: false, error: 'ต้องระบุ folder' });
+  }
+  const pinStr = String(pin || '');
+  if (!/^\d{4}$/.test(pinStr)) {
+    return res.status(400).json({
+      ok: false,
+      error: 'รหัสต้องเป็นตัวเลข 4 หลักเท่านั้น'
+    });
+  }
+
+  folderLocks[folder] = {
+    hash: hashPin(pinStr),
+    hint: hint || ''
+  };
+
   writeData('folder-locks', folderLocks);
   res.json({ ok: true });
 });
