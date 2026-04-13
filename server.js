@@ -48,7 +48,7 @@ app.get('/api/events', (req, res) => {
 // ══════════════════════════════════════════
 // CONFIG
 // ══════════════════════════════════════════
-const PORT = process.env.FV_PORT || 3000;
+const PORT = process.env.PORT || process.env.FV_PORT || 3000;
 
 let CONSOLE_MODE = (process.env.FV_CONSOLE || '').toLowerCase();
 

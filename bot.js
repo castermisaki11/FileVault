@@ -28,7 +28,8 @@ const fs    = require('fs');
 const r2    = require('./r2');
 
 // ── Config ──
-const FV_SERVER_URL = process.env.FV_SERVER_URL || 'http://localhost:3000';
+// บน Render: ใช้ FV_SERVER_URL ที่ตั้งค่าไว้ หรือ RENDER_EXTERNAL_URL ที่ Render inject อัตโนมัติ
+const FV_SERVER_URL = process.env.FV_SERVER_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000';
 const token         = process.env.DISCORD_TOKEN;
 const channelId     = process.env.CHANNEL_ID;
 const domain        = process.env.DOMAIN;

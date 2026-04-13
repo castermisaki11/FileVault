@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: filevault
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js & node bot.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FV_CONSOLE
+        value: off
+      - key: FV_SERVER_URL
+        value: https://filevault.onrender.com   # ← เปลี่ยนเป็น URL จริงของ Render service
+      # Set the rest via Render Dashboard (secrets):
+      # R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL
+      # DISCORD_TOKEN, DISCORD_GUILD_ID, CHANNEL_ID, MTDISCORD_CHANNEL_ID
+      # DISCORD_CLIENT_ID, DISCORD_CLIENT_ID2
