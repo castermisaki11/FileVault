@@ -1,20 +1,16 @@
 {
-  "name": "filevault-server",
+  "name": "filevault",
   "version": "2.0.0",
-  "description": "FileVault — ระบบจัดการไฟล์",
+  "description": "FileVault — R2-backed file manager with Discord bot",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start":       "node server.js",
+    "bot":         "node bot.js",
+    "dev":         "node server.js",
+    "dev:bot":     "node bot.js",
+    "start:all":   "node server.js & node bot.js"
   },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.1028.0",
-    "@aws-sdk/lib-storage": "^3.1028.0",
-    "@aws-sdk/s3-request-presigner": "^3.1028.0",
-    "axios": "^1.15.0",
-    "cors": "^2.8.5",
-    "discord.js": "^14.26.2",
-    "dotenv": "^17.4.1",
-    "express": "^4.22.1",
-    "multer": "^1.4.5-lts.1"
+  "engines": {
+    "node": ">=18"
   }
 }

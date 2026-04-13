@@ -312,16 +312,6 @@ body {
 .search-ico { font-size: 0.8rem; color: var(--t3); }
 .search-inp { flex: 1; background: none; border: none; outline: none; font-family: var(--font); font-size: 0.9rem; color: var(--t1); }
 .search-inp::placeholder { color: var(--t4); }
-.new-input {
-  flex: 1;
-  background: var(--surface); border: 1.5px solid var(--border);
-  border-radius: 10px; padding: 9px 12px;
-  font-family: var(--font); font-size: 0.88rem;
-  color: var(--t1); outline: none;
-}
-.new-input:focus { border-color: var(--blue); }
-.new-input::placeholder { color: var(--t4); }
-.newfile-row { display: flex; gap: 8px; }
 
 /* Filter pills */
 .filter-pills { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }

@@ -76,6 +76,9 @@ window.addEventListener('load', () => {
   setupDragDrop();
   setupKeyboard();
   updateBreadcrumb();
+
+  // ── SSE: รับ push จาก server อัตโนมัติ ──
+  _unusedSSE();
 });
 
 function updatePreviewBtn() {
@@ -645,7 +648,9 @@ function makeCard(f) {
     ? `<img class="fc-img-thumb" src="${API}/api/download/${encodeURIComponent(f.name)}${folderQs(f.folder||currentFolder)}" loading="lazy" alt="${esc(f.name)}"/>`
     : `<div class="fc-ico" style="color:${info.color}">${fIcon(f.name)}</div>`;
   const folderTag = searchGlobal && f.folder ? `<div class="fc-folder-tag">📂 ${esc(f.folder)}</div>` : '';
-  card.innerHTML=`${thumb}<div class="fc-name">${esc(f.name)}</div>${folderTag}<div class="fc-meta">${hSize(f.size)}</div><div class="fc-actions"><button class="fc-btn" onclick="event.stopPropagation();openMoveModal('${escA(f.name)}','${escA(f.folder||currentFolder)}')">↔</button><button class="fc-btn" onclick="event.stopPropagation();dlFile(null,'${escA(f.name)}',${JSON.stringify(f.folder||currentFolder)})">⬇</button><button class="fc-btn del" onclick="event.stopPropagation();delFile(null,'${escA(f.name)}',${JSON.stringify(f.folder||currentFolder)})">🗑</button></div>`;
+  const fileFolder = f.folder||currentFolder;
+  const prettyPath = (fileFolder ? fileFolder + '/' : '') + f.name;
+  card.innerHTML=`${thumb}<div class="fc-name">${esc(f.name)}</div>${folderTag}<div class="fc-meta">${hSize(f.size)}</div><div class="fc-actions"><button class="fc-btn" title="คัดลอก Link" onclick="event.stopPropagation();copyPrettyUrl('${escA(prettyPath)}')">🔗</button><button class="fc-btn" onclick="event.stopPropagation();openMoveModal('${escA(f.name)}','${escA(fileFolder)}')">⇔</button><button class="fc-btn" onclick="event.stopPropagation();dlFile(null,'${escA(f.name)}',${JSON.stringify(fileFolder)})">⬇</button><button class="fc-btn del" onclick="event.stopPropagation();delFile(null,'${escA(f.name)}',${JSON.stringify(fileFolder)})">🗑</button></div>`;
   card.onclick=()=>openFileByName(f.name, f.folder||currentFolder);
   makeDraggable(card, f);
   return card;
@@ -799,14 +804,6 @@ async function handleZipUploadFiles(zips, qs='') {
   });
 }
 
-async function newFile() {
-  const name=document.getElementById('new-filename').value.trim();
-  if(!name){toast('กรุณากรอกชื่อไฟล์',true);return;}
-  const qs=folderQs();
-  const d=await apiFetch(`/api/files/${encodeURIComponent(name)}${qs}`,{method:'PUT',body:{content:''}});
-  if(d.ok){document.getElementById('new-filename').value='';toast('✓ สร้างไฟล์: '+name);await loadFiles();openFileByName(name, currentFolder);}
-  else toast('⚠ '+d.error,true);
-}
 
 // ── Preview helpers ──
 function hideAllPreviews() {
@@ -1246,3 +1243,65 @@ function closeLockSettings() {
   document.getElementById('lset-error').classList.add('hidden');
   lockSettingsTarget = null;
 }
+
+// ══════════════════════════════════════════
+// 🔗 COPY PRETTY URL  — /f/<folder>/<file>
+// ══════════════════════════════════════════
+function copyPrettyUrl(prettyPath) {
+  const base = window.location.origin;
+  const url  = base + '/f/' + prettyPath.split('/').map(encodeURIComponent).join('/');
+  navigator.clipboard.writeText(url).then(() => {
+    toast('🔗 คัดลอก link แล้ว!');
+  }).catch(() => {
+    // fallback สำหรับ browser ที่ไม่ support clipboard
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.position = 'fixed';
+    ta.style.opacity  = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('🔗 คัดลอก link แล้ว!');
+  });
+}
+
+// ══════════════════════════════════════════
+// 🔄 SSE AUTO-REFRESH
+// ══════════════════════════════════════════
+(function initSSE() {
+  let es, retryTimer;
+
+  function connect() {
+    es = new EventSource('/api/events');
+
+    es.addEventListener('change', async (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        // ถ้า event เกิดใน folder ที่กำลังดูอยู่ หรือ root → โหลดใหม่
+        const evFolder = data.folder || '';
+        if (evFolder === (currentFolder || '') || evFolder === '' || currentFolder === '') {
+          await loadFiles();
+        }
+        // โหลด folder list เสมอ (กรณี mkdir/rmdir)
+        if (['mkdir','rmdir','upload'].includes(data.action)) {
+          await loadFolders();
+        }
+      } catch {}
+    });
+
+    es.onerror = () => {
+      es.close();
+      // retry 5 วิ
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(connect, 5_000);
+    };
+  }
+
+  // เริ่ม connect หลัง page load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', connect);
+  } else {
+    connect();
+  }
+})();
