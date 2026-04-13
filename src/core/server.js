@@ -9,6 +9,7 @@ const crypto       = require('crypto');
 const { execSync } = require('child_process');
 const { sendOnline, sendOffline, setShutdownCallback } = require('./notify');
 const r2           = require('./r2');
+const db           = require('./db');
 
 const app = express();
 
@@ -153,22 +154,44 @@ app.use((req, res, next) => {
 
 // ── Site password lock ──
 const SITE_PASSWORD = process.env.FV_SITE_PASSWORD || '';
-const siteTokens    = new Set();
+// Fallback in-memory set (ใช้เมื่อ DB ไม่พร้อม)
+const _memTokens = new Set();
 function genToken() { return crypto.randomBytes(32).toString('hex'); }
+
+async function checkToken(token) {
+  if (!token) return false;
+  // ตรวจ DB ก่อน ถ้า DB ไม่พร้อมใช้ in-memory
+  try {
+    if (await db.isHealthy()) return await db.hasSession(token);
+  } catch {}
+  return _memTokens.has(token);
+}
+
+async function saveToken(token, ip) {
+  _memTokens.add(token);
+  try { await db.addSession(token, ip); } catch {}
+}
 
 if (SITE_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === '/api/site-auth' || req.path.startsWith('/api/')) return next();
     const token = req.cookies?.fv_token || req.headers['x-fv-token'] || new URLSearchParams(req.url.split('?')[1] || '').get('fv_token');
-    if (token && siteTokens.has(token)) return next();
-    res.send(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>FileVault — ล็อค</title><style>*{margin:0;padding:0;box-sizing:border-box}body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1117;font-family:'Segoe UI',sans-serif}.card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:20px;padding:40px 36px;max-width:360px;width:100%;text-align:center;box-shadow:0 8px 40px #0008}.logo{font-size:2.8rem;margin-bottom:12px}h1{color:#e2e8f0;font-size:1.3rem;font-weight:700;margin-bottom:4px}.sub{color:#64748b;font-size:.85rem;margin-bottom:28px}input{width:100%;padding:12px 16px;border-radius:12px;border:1.5px solid #2a2d3a;background:#0f1117;color:#e2e8f0;font-size:1rem;margin-bottom:14px;outline:none;text-align:center;letter-spacing:3px;transition:border .2s}input:focus{border-color:#6366f1}button{width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:1rem;font-weight:600;cursor:pointer;transition:opacity .2s}button:hover{opacity:.9}.err{color:#f87171;font-size:.82rem;margin-top:8px;display:none}</style></head><body><div class="card"><div class="logo">🔐</div><h1>FileVault</h1><p class="sub">กรุณาใส่รหัสผ่านเพื่อเข้าใช้งาน</p><input id="pw" type="password" placeholder="รหัสผ่าน..." onkeydown="if(event.key==='Enter')auth()"/><button onclick="auth()">เข้าสู่ระบบ</button><div class="err" id="err">❌ รหัสผ่านไม่ถูกต้อง</div></div><script>async function auth(){const pw=document.getElementById('pw').value;const r=await fetch('/api/site-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});const d=await r.json();if(d.ok){document.cookie='fv_token='+d.token+'; path=/; max-age=2592000; samesite=strict';location.reload();}else{document.getElementById('err').style.display='block';document.getElementById('pw').value='';document.getElementById('pw').focus();}}document.getElementById('pw').focus();</script></body></html>`);
+    checkToken(token).then(valid => {
+      if (valid) return next();
+      res.send(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>FileVault — ล็อค</title><style>*{margin:0;padding:0;box-sizing:border-box}body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1117;font-family:'Segoe UI',sans-serif}.card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:20px;padding:40px 36px;max-width:360px;width:100%;text-align:center;box-shadow:0 8px 40px #0008}.logo{font-size:2.8rem;margin-bottom:12px}h1{color:#e2e8f0;font-size:1.3rem;font-weight:700;margin-bottom:4px}.sub{color:#64748b;font-size:.85rem;margin-bottom:28px}input{width:100%;padding:12px 16px;border-radius:12px;border:1.5px solid #2a2d3a;background:#0f1117;color:#e2e8f0;font-size:1rem;margin-bottom:14px;outline:none;text-align:center;letter-spacing:3px;transition:border .2s}input:focus{border-color:#6366f1}button{width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:1rem;font-weight:600;cursor:pointer;transition:opacity .2s}button:hover{opacity:.9}.err{color:#f87171;font-size:.82rem;margin-top:8px;display:none}</style></head><body><div class="card"><div class="logo">🔐</div><h1>FileVault</h1><p class="sub">กรุณาใส่รหัสผ่านเพื่อเข้าใช้งาน</p><input id="pw" type="password" placeholder="รหัสผ่าน..." onkeydown="if(event.key==='Enter')auth()"/><button onclick="auth()">เข้าสู่ระบบ</button><div class="err" id="err">❌ รหัสผ่านไม่ถูกต้อง</div></div><script>async function auth(){const pw=document.getElementById('pw').value;const r=await fetch('/api/site-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});const d=await r.json();if(d.ok){document.cookie='fv_token='+d.token+'; path=/; max-age=2592000; samesite=strict';location.reload();}else{document.getElementById('err').style.display='block';document.getElementById('pw').value='';document.getElementById('pw').focus();}}document.getElementById('pw').focus();</script></body></html>`);
+    }).catch(() => next());
   });
 }
 
-app.post('/api/site-auth', (req, res) => {
+app.post('/api/site-auth', async (req, res) => {
   const { password } = req.body || {};
   if (!SITE_PASSWORD) return res.json({ ok: true, token: 'no-lock' });
-  if (password === SITE_PASSWORD) { const t = genToken(); siteTokens.add(t); return res.json({ ok: true, token: t }); }
+  if (password === SITE_PASSWORD) {
+    const t  = genToken();
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    await saveToken(t, ip);
+    return res.json({ ok: true, token: t });
+  }
   res.status(401).json({ ok: false, error: 'รหัสผ่านไม่ถูกต้อง' });
 });
 
@@ -206,52 +229,52 @@ app.delete('/api/folders', async (req, res) => {
 });
 
 // ══════════════════════════════════════════
-// ROUTES — Folder locks
+// ROUTES — Folder locks  (PostgreSQL-backed)
 // ══════════════════════════════════════════
-let folderLocks = readData('folder-locks', {});
-const LOCKS_KEY = process.env.FV_LOCKS_KEY || 'system/folder-locks.json';
+// folderLocks เป็น in-memory cache — DB คือ source of truth
+let folderLocks = {};
 
 function hashPin(pin) { return crypto.createHash('sha256').update('fv-lock:' + pin).digest('hex'); }
 
-let _lockSaveTimer = null;
-async function saveLocks() {
-  writeData('folder-locks', folderLocks);
-  clearTimeout(_lockSaveTimer);
-  _lockSaveTimer = setTimeout(async () => {
-    try {
-      await r2.uploadObject(LOCKS_KEY, Buffer.from(JSON.stringify(folderLocks, null, 2), 'utf8'), 'application/json');
-    } catch (e) { console.warn('⚠ [locks] R2 save error:', e.message); }
-  }, 300);
+// โหลด locks จาก DB ลง cache
+async function loadLocksFromDB() {
+  try {
+    folderLocks = await db.getLocks();
+    console.log(`🔒 [locks] Loaded ${Object.keys(folderLocks).length} locks from PostgreSQL`);
+  } catch (e) {
+    console.warn('⚠ [locks] DB load error:', e.message, '— using local fallback');
+    // fallback: ลอง R2
+    try { await loadLocksFromR2(); } catch {}
+  }
 }
 
+// legacy R2 fallback (ใช้เมื่อ DB ไม่พร้อม)
+const LOCKS_KEY = process.env.FV_LOCKS_KEY || 'system/folder-locks.json';
 async function loadLocksFromR2() {
   try {
     const obj    = await r2.downloadObject(LOCKS_KEY);
     const remote = JSON.parse(obj.buffer.toString('utf8'));
     Object.assign(folderLocks, remote);
-    writeData('folder-locks', folderLocks);
-    console.log(`🔒 [locks] Loaded ${Object.keys(folderLocks).length} locks from R2`);
-  } catch (e) {
-    if (e.$metadata?.httpStatusCode === 404 || e.name === 'NoSuchKey' || e.Code === 'NoSuchKey') {
-      console.log('🔒 [locks] No remote locks — using local');
-    } else {
-      console.warn('⚠ [locks] R2 load error:', e.message);
-    }
-  }
+    console.log(`🔒 [locks] Loaded ${Object.keys(folderLocks).length} locks from R2 (fallback)`);
+  } catch {}
 }
 
 app.get('/api/lock', (req, res) => {
   res.json({ ok: true, locks: Object.keys(folderLocks).map(f => ({ folder: f, hint: folderLocks[f].hint || '' })) });
 });
+
 app.post('/api/lock', async (req, res) => {
   const { folder, pin, hint } = req.body || {};
   if (!folder) return res.status(400).json({ ok: false, error: 'ต้องระบุ folder' });
   const pinStr = String(pin || '');
   if (!/^\d{4}$/.test(pinStr)) return res.status(400).json({ ok: false, error: 'รหัสต้องเป็นตัวเลข 4 หลัก' });
-  folderLocks[folder] = { hash: hashPin(pinStr), hint: hint || '' };
-  await saveLocks();
+  const pinHash = hashPin(pinStr);
+  folderLocks[folder] = { hash: pinHash, hint: hint || '' };
+  try { await db.setLock(folder, pinHash, hint || ''); }
+  catch (e) { console.warn('⚠ [locks] DB setLock error:', e.message); }
   res.json({ ok: true });
 });
+
 app.delete('/api/lock', async (req, res) => {
   const { folder, pin } = req.body || {};
   if (!folder) return res.status(400).json({ ok: false, error: 'ต้องระบุ folder' });
@@ -259,9 +282,11 @@ app.delete('/api/lock', async (req, res) => {
   if (!lock) return res.status(404).json({ ok: false, error: 'folder นี้ไม่มีรหัส' });
   if (!pin || hashPin(String(pin)) !== lock.hash) return res.status(403).json({ ok: false, error: 'รหัสไม่ถูกต้อง' });
   delete folderLocks[folder];
-  await saveLocks();
+  try { await db.removeLock(folder); }
+  catch (e) { console.warn('⚠ [locks] DB removeLock error:', e.message); }
   res.json({ ok: true });
 });
+
 app.post('/api/lock/verify', (req, res) => {
   const { folder, pin } = req.body || {};
   const lock = folderLocks[folder];
@@ -320,6 +345,10 @@ app.post('/api/upload', checkStorageLimit, upload.array('files'), async (req, re
       const key    = `${r2Folder}/${f.filename}`;
       const buffer = fs.readFileSync(f.path);
       await r2.uploadObject(key, buffer, f.mimetype);
+      // Audit log
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+      await db.logFileEvent({ eventType: 'upload', fileName: f.filename, folder: folder || r2Folder, r2Key: key, fileSize: f.size, ip, userAgent: req.headers['user-agent'] });
+      await db.recordStat({ uploadCount: 1, uploadBytes: f.size });
     } catch (e) { console.error('R2 upload error:', e.message); }
   }));
 
@@ -373,6 +402,10 @@ app.get('/api/download/:name', async (req, res) => {
     res.set('Content-Disposition', `inline; filename="${name}"`);
     if (obj.contentLength) res.set('Content-Length', obj.contentLength);
     res.set('Cache-Control', 'private, max-age=3600');
+    // Audit log
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    db.logFileEvent({ eventType: 'download', fileName: name, folder, r2Key: key, fileSize: obj.contentLength, ip, userAgent: req.headers['user-agent'] });
+    db.recordStat({ downloadCount: 1, downloadBytes: obj.contentLength || 0 });
     res.send(obj.buffer);
   } catch (e) {
     const dir = safeFolderPath(folder), fp = path.join(dir, name);
@@ -389,6 +422,10 @@ app.delete('/api/delete/:name', async (req, res) => {
   try {
     const key = folder ? `${folder}/${name}` : name;
     await r2.deleteObject(key);
+    // Audit log
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    await db.logFileEvent({ eventType: 'delete', fileName: name, folder, r2Key: key, ip, userAgent: req.headers['user-agent'] });
+    await db.recordStat({ deleteCount: 1 });
   } catch (e) { console.error('R2 delete error:', e.message); }
   invalidateDirCache();
   res.json({ ok: true });
@@ -565,8 +602,72 @@ app.get('/f/*', async (req, res) => {
 });
 
 // ══════════════════════════════════════════
-// SHUTDOWN
+// ROUTES — Stats & Audit Log (PostgreSQL)
 // ══════════════════════════════════════════
+
+// middleware: ตรวจ site session ก่อนเข้า stats/events
+async function requireAuth(req, res, next) {
+  // ถ้าไม่ได้ตั้ง SITE_PASSWORD ข้ามการตรวจ
+  if (!SITE_PASSWORD) return next();
+  const token = req.cookies?.fv_token || req.headers['x-fv-token'];
+  const ok = token ? await checkToken(token) : false;
+  if (!ok) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  next();
+}
+
+app.get('/api/stats', requireAuth, async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days || '30', 10), 1), 365);
+    if (!await db.isHealthy()) {
+      return res.status(503).json({ ok: false, error: 'Database unavailable' });
+    }
+    const [daily, total] = await Promise.all([db.getStats({ days }), db.getTotalStats()]);
+    res.json({ ok: true, daily, total, days });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// valid event types สำหรับ filter
+const VALID_EVENT_TYPES = new Set(['upload', 'download', 'delete', 'move', 'rename', 'folder_create', 'folder_delete']);
+
+app.get('/api/events', requireAuth, async (req, res) => {
+  try {
+    if (!await db.isHealthy()) {
+      return res.status(503).json({ ok: false, error: 'Database unavailable' });
+    }
+    const { folder, type, limit = '50', offset = '0', since, until } = req.query;
+
+    // validate event type
+    if (type && !VALID_EVENT_TYPES.has(type)) {
+      return res.status(400).json({ ok: false, error: `type ไม่ถูกต้อง — ใช้ได้: ${[...VALID_EVENT_TYPES].join(', ')}` });
+    }
+
+    // validate date
+    const sinceDate = since ? new Date(since) : undefined;
+    const untilDate = until ? new Date(until) : undefined;
+    if (sinceDate && isNaN(sinceDate)) return res.status(400).json({ ok: false, error: 'since รูปแบบวันที่ไม่ถูกต้อง' });
+    if (untilDate && isNaN(untilDate)) return res.status(400).json({ ok: false, error: 'until รูปแบบวันที่ไม่ถูกต้อง' });
+
+    const limitNum  = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
+    const offsetNum = Math.max(parseInt(offset, 10) || 0, 0);
+
+    const events = await db.getFileEvents({
+      folder,
+      eventType: type,
+      limit:     limitNum,
+      offset:    offsetNum,
+      since:     sinceDate,
+      until:     untilDate,
+    });
+    res.json({ ok: true, events, limit: limitNum, offset: offsetNum });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/db/health', async (req, res) => {
+  const healthy = await db.isHealthy();
+  res.status(healthy ? 200 : 503).json({ ok: healthy, database: healthy ? 'connected' : 'unavailable' });
+});
+
+
 const SHUTDOWN_TOKEN = process.env.FV_SHUTDOWN_TOKEN || '';
 
 async function gracefulShutdown(reason = 'manual') {
@@ -574,6 +675,7 @@ async function gracefulShutdown(reason = 'manual') {
   isShuttingDown = true;
   console.log(`\n🛑 Shutting down... (${reason})`);
   try { await sendOffline?.(); } catch {}
+  try { await db.close(); } catch {}
   const server = app.get('server');
   if (server) server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000);
@@ -607,7 +709,16 @@ function startServer(port) {
     try { await sendOnline?.(); setShutdownCallback?.(() => gracefulShutdown('discord')); }
     catch (e) { console.log('Discord error:', e.message); }
 
-    await loadLocksFromR2();
+    // ── PostgreSQL: migrate → load locks ──
+    const dbReady = await db.runMigrations();
+    if (dbReady) {
+      await loadLocksFromDB();
+      // ล้าง sessions หมดอายุทุก 6 ชั่วโมง
+      setInterval(() => db.cleanExpiredSessions().catch(() => {}), 6 * 60 * 60 * 1000);
+    } else {
+      // fallback: โหลด locks จาก R2 เหมือนเดิม
+      await loadLocksFromR2();
+    }
   });
 
   httpServer.on('error', (err) => {

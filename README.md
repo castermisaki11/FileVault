@@ -93,17 +93,6 @@ npm start
 | `DISCORD_FILE_FOLDER` | `discord-files` — โฟลเดอร์ใน R2 สำหรับไฟล์อื่น |
 | `DOMAIN` | Domain แสดงใน Discord embed |
 
-### Monitor Bot _(optional)_
-
-| Variable | คำอธิบาย |
-|---|---|
-| `MTDISCORD_TOKEN` | Bot Token สำหรับ monitor |
-| `DISCORD_CLIENT_ID2` | Application ID ของ monitor bot |
-| `MTDISCORD_CHANNEL_ID` | Channel ID สำหรับ monitor dashboard |
-| `MONITOR_URLS` | URL ที่ต้องการ monitor คั่นด้วย `,` |
-
----
-
 ## 🤖 Discord Bot Commands
 
 | Command | คำอธิบาย |
@@ -115,7 +104,6 @@ npm start
 | `/r2list [folder] [limit]` | แสดง list ไฟล์ล่าสุดใน R2 |
 | `/r2delete <key>` | ลบไฟล์ใน R2 *(admin only)* |
 | `/purge <days> [folder]` | ลบไฟล์เก่าเกิน N วัน *(admin only)* |
-| `/help` | แสดงคำสั่งทั้งหมด |
 
 ### การตั้งค่า Bot Permissions
 
