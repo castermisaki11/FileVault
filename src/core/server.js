@@ -133,7 +133,7 @@ const uploadMem = multer({ storage: memStorage, limits: { fileSize: FILE_SIZE_BY
 // ══════════════════════════════════════════
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public'), {
+app.use(express.static(path.join(__dirname, '../../public'), {
   maxAge: '1h',
   etag:   true,
   lastModified: true,
