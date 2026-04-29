@@ -1,205 +1,154 @@
-# ☁️ FileVault
+# ☁ FileVault
 
-ระบบจัดการไฟล์ผ่านเว็บ เชื่อมต่อ **Cloudflare R2** พร้อม **Discord Bot** — รันบน Node.js/Express
+> ระบบจัดการไฟล์ส่วนตัว — Cloudflare R2 + PostgreSQL
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org)
+FileVault เป็น self-hosted file manager ที่เก็บไฟล์บน **Cloudflare R2** และบันทึกข้อมูลใน **PostgreSQL**
 
 ---
 
 ## ✨ Features
 
-| | |
+| หมวด | ฟีเจอร์ |
 |---|---|
-| 📁 | จัดการไฟล์/โฟลเดอร์ผ่าน Web UI |
-| ☁️ | เก็บไฟล์บน **Cloudflare R2** (S3-compatible) |
-| 🔒 | ล็อครหัสผ่านทั้งเว็บ และล็อค PIN รายโฟลเดอร์ |
-| 🤖 | **Discord Bot** — realtime dashboard + slash commands + auto-upload attachment → R2 |
-| 📊 | Stats sync กับ R2 อัตโนมัติ — ข้อมูลไม่หายเมื่อ restart |
-| 🖼️ | Preview รูปภาพ / PDF / วิดีโอ / เสียง |
-| 🔍 | ค้นหา + กรองไฟล์ (ขนาด, วันที่, ประเภท) |
-| 📡 | Monitor bot — ตรวจสอบ uptime URL ภายนอก |
-| 🛑 | Graceful shutdown พร้อม auto-archive ไฟล์ |
+| **ไฟล์** | อัปโหลด / ดาวน์โหลด / ลบ / ย้าย / เปลี่ยนชื่อ |
+| **Folder** | สร้าง / ลบ / ล็อกด้วย PIN 4 หลัก |
+| **Storage** | Cloudflare R2 (S3-compatible), presign URL, multipart upload |
+| **ฐานข้อมูล** | PostgreSQL — folder locks, sessions, audit log, สถิติรายวัน |
+| **ความปลอดภัย** | Site password, folder PIN lock, session token ใน DB |
 
 ---
 
-## 🚀 Quick Start
+## 📁 โครงสร้างโปรเจกต์
 
-### 1. Clone & Install
+```
+filevault/
+├── index.js              ← entry point (node index.js)
+├── package.json
+├── .env                  ← ตั้งค่า secret
+├── render.yaml           ← deploy บน Render
+│
+├── src/
+│   ├── core/
+│   │   ├── server.js     ← Express API + Multer + R2 routes
+│   │   ├── db.js         ← PostgreSQL layer (pool, migrations, queries)
+│   │   └── r2.js         ← Cloudflare R2 module (AWS SDK v3)
+│   └── sync/
+│       └── stats-sync.js ← Legacy R2 stats sync (fallback)
+│
+└── public/               ← Frontend (HTML/CSS/JS)
+    ├── index.html
+    ├── app.js
+    ├── styles.css
+    └── categories.*
+```
+
+---
+
+## 🚀 ติดตั้งและรัน
+
+### 1. Clone + ติดตั้ง dependencies
 
 ```bash
-git clone https://github.com/castermisaki11/FileVault.git
-cd FileVault
+git clone <your-repo>
+cd filevault
 npm install
 ```
 
-### 2. ตั้งค่า Environment
+### 2. ตั้งค่า `.env`
 
-```bash
-cp .env.example .env
-# แก้ .env ใส่ค่าของคุณ
-```
+ค่าที่ **ต้องตั้ง**:
 
-### 3. Run
+| Key | คำอธิบาย |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `R2_ACCOUNT_ID` | Cloudflare Account ID |
+| `R2_ACCESS_KEY_ID` | R2 Access Key |
+| `R2_SECRET_ACCESS_KEY` | R2 Secret Key |
+| `R2_BUCKET` | ชื่อ R2 bucket |
+
+### 3. รัน
 
 ```bash
 npm start
 ```
 
-เปิดเบราว์เซอร์ที่ `http://localhost:3000`
-
----
-
-## ⚙️ Environment Variables
-
-### Server
-
-| Variable | Default | คำอธิบาย |
-|---|---|---|
-| `FV_PORT` | `3000` | Port ที่ใช้รัน |
-| `FV_STORAGE_LIMIT` | `0` | จำกัดพื้นที่รวม (`0` = ไม่จำกัด) เช่น `5gb`, `500mb` |
-| `FV_FILE_LIMIT` | `200mb` | จำกัดขนาดต่อไฟล์ |
-| `FV_STATUS_MS` | `5000` | interval แสดง status ใน terminal (ms) |
-| `FV_SITE_PASSWORD` | _(ว่าง)_ | รหัสผ่านเข้าเว็บทั้งหมด (ว่าง = ไม่ล็อค) |
-| `FV_DEFAULT_FOLDER` | `upload/cloud` | โฟลเดอร์ default ใน R2 |
-| `FV_SHUTDOWN_TOKEN` | _(ว่าง)_ | Token สำหรับ `POST /api/shutdown` |
-
-### Cloudflare R2
-
-| Variable | คำอธิบาย |
-|---|---|
-| `R2_ACCOUNT_ID` | Cloudflare Account ID |
-| `R2_ACCESS_KEY_ID` | R2 Access Key ID |
-| `R2_SECRET_ACCESS_KEY` | R2 Secret Access Key |
-| `R2_BUCKET` | ชื่อ Bucket |
-| `R2_PUBLIC_URL` | _(optional)_ Custom domain สำหรับ public URL |
-
-### Stats Sync
-
-| Variable | Default | คำอธิบาย |
-|---|---|---|
-| `FV_STATS_KEY` | `system/stats.json` | Key ใน R2 สำหรับเก็บ stats |
-| `FV_STATS_SYNC_MS` | `15000` | Sync interval (ms) |
-
-### Discord Bot
-
-| Variable | คำอธิบาย |
-|---|---|
-| `DISCORD_TOKEN` | Bot Token หลัก (FileVault dashboard) |
-| `DISCORD_CLIENT_ID` | Application ID ของ bot หลัก |
-| `CHANNEL_ID` | Channel ID สำหรับแสดง realtime dashboard |
-| `DISCORD_ADMIN_IDS` | User ID ที่มีสิทธิ์ใช้คำสั่ง admin (คั่นด้วย `,`) |
-| `DISCORD_IMAGE_FOLDER` | `discord-images` — โฟลเดอร์ใน R2 สำหรับรูปจาก Discord |
-| `DISCORD_FILE_FOLDER` | `discord-files` — โฟลเดอร์ใน R2 สำหรับไฟล์อื่น |
-| `DOMAIN` | Domain แสดงใน Discord embed |
-
-## 🤖 Discord Bot Commands
-
-| Command | คำอธิบาย |
-|---|---|
-| `/status` | ดูสถานะ server แบบ realtime |
-| `/shutdown` | ปิด server *(admin only)* |
-| `/locks` | ดาวน์โหลด folder-locks.json *(admin only)* |
-| `/r2stats` | ดูจำนวนไฟล์และขนาดรวมใน R2 |
-| `/r2list [folder] [limit]` | แสดง list ไฟล์ล่าสุดใน R2 |
-| `/r2delete <key>` | ลบไฟล์ใน R2 *(admin only)* |
-| `/purge <days> [folder]` | ลบไฟล์เก่าเกิน N วัน *(admin only)* |
-
-### การตั้งค่า Bot Permissions
-
-เปิดใน Discord Developer Portal → Bot → Privileged Gateway Intents:
-
-- ✅ `Message Content Intent`
-
-Permissions ที่ต้องการ:
-- ✅ Read Messages / View Channels
-- ✅ Send Messages
-- ✅ Manage Messages *(สำหรับลบ message หลัง upload)*
-- ✅ Add Reactions
-- ✅ Read Message History
-
----
-
-## 🔒 ระบบล็อคโฟลเดอร์
-
-- ตั้ง PIN 4 หลักต่อโฟลเดอร์ได้อิสระ
-- ไฟล์ใน folder ที่ล็อคจะ **ไม่แสดง thumbnail** และ **ไม่สามารถดาวน์โหลดได้** จนกว่าจะใส่ PIN ถูก
-- Server block ทุก request (list / download / delete) ถ้าไม่มี PIN
-
----
-
-## 📊 Stats Sync
-
-stats (requests, uploads, downloads, R2 operations ฯลฯ) จะถูก:
-- โหลดจาก R2 ตอน server start (merge กับ local — เอาค่าที่มากกว่า)
-- บันทึกขึ้น R2 ทุก 15 วินาที (ปรับได้ผ่าน `FV_STATS_SYNC_MS`)
-- Flush ทันทีตอน graceful shutdown
-
----
-
-## 📡 API Endpoints
-
-### Files
-| Method | Path | คำอธิบาย |
-|---|---|---|
-| `GET` | `/api/files` | List ไฟล์ใน folder |
-| `GET` | `/api/search?q=` | ค้นหาไฟล์ |
-| `POST` | `/api/upload` | อัปโหลดไฟล์ |
-| `GET` | `/api/download/:name` | ดาวน์โหลดไฟล์ |
-| `DELETE` | `/api/delete/:name` | ลบไฟล์ |
-| `POST` | `/api/move` | ย้าย/copy ไฟล์ |
-| `PATCH` | `/api/rename` | เปลี่ยนชื่อไฟล์ |
-
-### R2 Direct
-| Method | Path | คำอธิบาย |
-|---|---|---|
-| `GET` | `/api/r2/files` | List objects ใน R2 |
-| `POST` | `/api/r2/upload` | Upload ตรงไปยัง R2 |
-| `GET` | `/api/r2/download/*` | Download จาก R2 ด้วย key |
-| `DELETE` | `/api/r2/delete/*` | ลบ object ใน R2 |
-| `POST` | `/api/r2/move` | Move/copy object ใน R2 |
-| `GET` | `/api/r2/status` | ตรวจสอบการเชื่อมต่อ R2 |
-| `POST` | `/api/r2/presign/upload` | สร้าง presigned URL สำหรับ upload |
-| `POST` | `/api/r2/presign/download` | สร้าง presigned URL สำหรับ download |
-
-### System
-| Method | Path | คำอธิบาย |
-|---|---|---|
-| `GET` | `/api/stats` | ดู stats |
-| `POST` | `/api/stats/reset` | Reset stats |
-| `POST` | `/api/shutdown` | ปิด server |
-| `GET` | `/api/dump/latest` | ดาวน์โหลด backup ล่าสุด |
-
----
-
-## 🗂️ Project Structure
+### 4. เปิดเบราว์เซอร์
 
 ```
-FileVault/
-├── server.js          # Express server หลัก
-├── r2.js              # Cloudflare R2 module (AWS SDK v3)
-├── notify.js          # Discord bot (FileVault + Monitor)
-├── stats-sync.js      # Stats persistence กับ R2
-├── public/
-│   ├── index.html     # Web UI
-│   ├── styles.css
-│   ├── categories.css
-│   └── categories.js
-├── .env.example       # Template environment variables
-├── .gitignore
-└── package.json
+http://localhost:3000
 ```
 
 ---
 
-## 📋 Requirements
+## 🗄️ PostgreSQL
 
-- Node.js 18+
-- Cloudflare R2 bucket
-- Discord Bot Token *(optional)*
+### Connection
+
+ใส่ใน `.env`:
+```
+DATABASE_URL=postgresql://user:password@host:5432/filevault
+```
+
+รองรับทุก provider: **Neon**, **Supabase**, **Render Postgres**, **Railway**, หรือ self-hosted
+
+### Schema (สร้างอัตโนมัติตอน startup)
+
+| ตาราง | เก็บอะไร |
+|---|---|
+| `folder_locks` | PIN hash + hint ของแต่ละ folder |
+| `site_sessions` | Auth token + IP + expiry (30 วัน) |
+| `file_events` | Audit log ทุก upload/download/delete |
+| `upload_stats` | สถิติรายวัน (นับ + bytes) |
+
+### API endpoints
+
+```
+GET  /api/stats          — สถิติรายวัน (query: ?days=30)
+GET  /api/events         — audit log   (query: ?type=upload&folder=x&limit=100)
+GET  /api/db/health      — สถานะ DB connection
+```
 
 ---
 
-## License
+## ☁️ Deploy บน Render
 
-[MIT](LICENSE) — ใช้งานได้เลย ฟรี ไม่มีข้อจำกัด
+1. Push code ขึ้น GitHub
+2. สร้าง **Web Service** บน [render.com](https://render.com)
+3. เชื่อม repo
+4. Render จะใช้ `render.yaml` อัตโนมัติ
+5. ไปที่ **Environment** → เพิ่ม secret variables:
+   - `DATABASE_URL` (สร้าง Render Postgres หรือใช้ Neon)
+   - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
+
+---
+
+## 🔑 Environment Variables
+
+```env
+# Server
+PORT=3000
+FV_STORAGE_LIMIT=5gb
+FV_FILE_LIMIT=200mb
+FV_SITE_PASSWORD=          # ล็อกทั้งเว็บด้วย password (ไม่บังคับ)
+FV_SHUTDOWN_TOKEN=         # token สำหรับ /api/shutdown
+
+# PostgreSQL
+DATABASE_URL=              # postgresql://user:pass@host:5432/db
+DB_SSL=auto                # auto | true | false
+DB_POOL_MAX=10
+
+# Cloudflare R2
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=
+R2_PUBLIC_URL=             # https://pub-xxx.r2.dev (ถ้าเปิด public bucket)
+FV_DEFAULT_FOLDER=cloud
+FV_SERVER_URL=http://localhost:3000
+```
+
+---
+
+## 📜 License
+
+MIT — ดูรายละเอียดใน [LICENSE](LICENSE)

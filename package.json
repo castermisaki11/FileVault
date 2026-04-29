@@ -1,17 +1,11 @@
 {
   "name": "filevault",
   "version": "2.1.0",
-  "description": "FileVault — R2-backed file manager with Discord bot & PostgreSQL",
+  "description": "FileVault — R2-backed file manager with PostgreSQL",
   "main": "index.js",
   "scripts": {
-    "start":     "node index.js",
-    "bot":       "node bot.js",
-    "bot2":      "node Bot2.js",
-    "dev":       "node index.js",
-    "dev:bot":   "node bot.js",
-    "dev:bot2":  "node Bot2.js",
-    "start:all": "node index.js & node bot.js & node Bot2.js",
-    "migrate":   "node scripts/migrate.js"
+    "start": "node index.js",
+    "dev":   "node index.js"
   },
   "engines": {
     "node": ">=18"
@@ -22,10 +16,10 @@
     "@aws-sdk/s3-request-presigner": "^3.1028.0",
     "axios": "^1.15.0",
     "cors": "^2.8.5",
-    "discord.js": "^14.26.2",
     "dotenv": "^17.4.1",
     "express": "^4.22.1",
     "multer": "^1.4.5-lts.1",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "@supabase/supabase-js": "^2.105.1"
   }
 }

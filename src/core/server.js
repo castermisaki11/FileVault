@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 const express      = require('express');
 const multer       = require('multer');
 const path         = require('path');
@@ -7,11 +7,17 @@ const cors         = require('cors');
 const http         = require('http');
 const crypto       = require('crypto');
 const { execSync } = require('child_process');
-const { sendOnline, sendOffline, setShutdownCallback } = require('./notify');
+
 const r2           = require('./r2');
 const db           = require('./db');
+const auth         = require('./auth');
+const logger       = require('./logger');
 
 const app = express();
+
+// ── Logger: patch console early so all subsequent console.* calls go through
+// the unified logger pipeline (coloured output + written to file)
+logger.patchConsole();
 
 // ══════════════════════════════════════════
 // CONFIG
@@ -44,9 +50,9 @@ function formatSize(bytes) {
 const STORAGE_LIMIT_BYTES = parseSize(CONFIG.STORAGE_LIMIT);
 const FILE_SIZE_BYTES     = parseSize(CONFIG.FILE_SIZE_LIMIT);
 
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-const DATA_DIR   = path.join(__dirname, 'data');
-const DUMP_DIR   = path.join(__dirname, 'dumps');
+const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
+const DATA_DIR   = path.join(__dirname, '..', '..', 'data');
+const DUMP_DIR   = path.join(__dirname, '..', '..', 'dumps');
 [UPLOAD_DIR, DATA_DIR, DUMP_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
 // ── Path helpers ──
@@ -133,7 +139,11 @@ const uploadMem = multer({ storage: memStorage, limits: { fileSize: FILE_SIZE_BY
 // ══════════════════════════════════════════
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, '../../public'), {
+
+// ── HTTP request logging (must come before routes, after body parser) ──
+app.use(logger.requestMiddleware);
+
+app.use(express.static(path.join(__dirname, '..', '..', 'public'), {
   maxAge: '1h',
   etag:   true,
   lastModified: true,
@@ -182,6 +192,19 @@ if (SITE_PASSWORD) {
     }).catch(() => next());
   });
 }
+
+// ══════════════════════════════════════════
+// AUTH ROUTES (Register / Login / Logout)
+// ══════════════════════════════════════════
+auth.createAuthRoutes(app);
+
+// GET /api/auth/first-user-check — ใช้แสดง badge บน register page
+app.get('/api/auth/first-user-check', async (req, res) => {
+  try {
+    const count = await auth.countUsers();
+    res.json({ ok: true, isFirst: count === 0 });
+  } catch { res.json({ ok: true, isFirst: false }); }
+});
 
 app.post('/api/site-auth', async (req, res) => {
   const { password } = req.body || {};
@@ -240,9 +263,9 @@ function hashPin(pin) { return crypto.createHash('sha256').update('fv-lock:' + p
 async function loadLocksFromDB() {
   try {
     folderLocks = await db.getLocks();
-    console.log(`🔒 [locks] Loaded ${Object.keys(folderLocks).length} locks from PostgreSQL`);
+    logger.info(`🔒 Loaded ${Object.keys(folderLocks).length} locks from PostgreSQL`, { ns: 'locks' });
   } catch (e) {
-    console.warn('⚠ [locks] DB load error:', e.message, '— using local fallback');
+    logger.warn('DB load error — using local fallback', { ns: 'locks', error: e.message });
     // fallback: ลอง R2
     try { await loadLocksFromR2(); } catch {}
   }
@@ -255,7 +278,7 @@ async function loadLocksFromR2() {
     const obj    = await r2.downloadObject(LOCKS_KEY);
     const remote = JSON.parse(obj.buffer.toString('utf8'));
     Object.assign(folderLocks, remote);
-    console.log(`🔒 [locks] Loaded ${Object.keys(folderLocks).length} locks from R2 (fallback)`);
+    logger.info(`🔒 Loaded ${Object.keys(folderLocks).length} locks from R2 (fallback)`, { ns: 'locks' });
   } catch {}
 }
 
@@ -271,7 +294,7 @@ app.post('/api/lock', async (req, res) => {
   const pinHash = hashPin(pinStr);
   folderLocks[folder] = { hash: pinHash, hint: hint || '' };
   try { await db.setLock(folder, pinHash, hint || ''); }
-  catch (e) { console.warn('⚠ [locks] DB setLock error:', e.message); }
+  catch (e) { logger.warn('DB setLock error', { ns: 'locks', error: e.message }); }
   res.json({ ok: true });
 });
 
@@ -283,7 +306,7 @@ app.delete('/api/lock', async (req, res) => {
   if (!pin || hashPin(String(pin)) !== lock.hash) return res.status(403).json({ ok: false, error: 'รหัสไม่ถูกต้อง' });
   delete folderLocks[folder];
   try { await db.removeLock(folder); }
-  catch (e) { console.warn('⚠ [locks] DB removeLock error:', e.message); }
+  catch (e) { logger.warn('DB removeLock error', { ns: 'locks', error: e.message }); }
   res.json({ ok: true });
 });
 
@@ -349,7 +372,7 @@ app.post('/api/upload', checkStorageLimit, upload.array('files'), async (req, re
       const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
       await db.logFileEvent({ eventType: 'upload', fileName: f.filename, folder: folder || r2Folder, r2Key: key, fileSize: f.size, ip, userAgent: req.headers['user-agent'] });
       await db.recordStat({ uploadCount: 1, uploadBytes: f.size });
-    } catch (e) { console.error('R2 upload error:', e.message); }
+    } catch (e) { logger.error('R2 upload error', { ns: 'upload', error: e.message }); }
   }));
 
   const savedFiles = req.files.map(f => ({ name: f.filename, size: f.size }));
@@ -426,7 +449,7 @@ app.delete('/api/delete/:name', async (req, res) => {
     const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
     await db.logFileEvent({ eventType: 'delete', fileName: name, folder, r2Key: key, ip, userAgent: req.headers['user-agent'] });
     await db.recordStat({ deleteCount: 1 });
-  } catch (e) { console.error('R2 delete error:', e.message); }
+  } catch (e) { logger.error('R2 delete error', { ns: 'delete', error: e.message }); }
   invalidateDirCache();
   res.json({ ok: true });
 });
@@ -605,60 +628,26 @@ app.get('/f/*', async (req, res) => {
 // ROUTES — Stats & Audit Log (PostgreSQL)
 // ══════════════════════════════════════════
 
-// middleware: ตรวจ site session ก่อนเข้า stats/events
-async function requireAuth(req, res, next) {
-  // ถ้าไม่ได้ตั้ง SITE_PASSWORD ข้ามการตรวจ
-  if (!SITE_PASSWORD) return next();
-  const token = req.cookies?.fv_token || req.headers['x-fv-token'];
-  const ok = token ? await checkToken(token) : false;
-  if (!ok) return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  next();
-}
-
-app.get('/api/stats', requireAuth, async (req, res) => {
+app.get('/api/stats', async (req, res) => {
   try {
-    const days = Math.min(Math.max(parseInt(req.query.days || '30', 10), 1), 365);
-    if (!await db.isHealthy()) {
-      return res.status(503).json({ ok: false, error: 'Database unavailable' });
-    }
+    const days  = parseInt(req.query.days || '30', 10);
     const [daily, total] = await Promise.all([db.getStats({ days }), db.getTotalStats()]);
     res.json({ ok: true, daily, total, days });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// valid event types สำหรับ filter
-const VALID_EVENT_TYPES = new Set(['upload', 'download', 'delete', 'move', 'rename', 'folder_create', 'folder_delete']);
-
-app.get('/api/events', requireAuth, async (req, res) => {
+app.get('/api/events', async (req, res) => {
   try {
-    if (!await db.isHealthy()) {
-      return res.status(503).json({ ok: false, error: 'Database unavailable' });
-    }
-    const { folder, type, limit = '50', offset = '0', since, until } = req.query;
-
-    // validate event type
-    if (type && !VALID_EVENT_TYPES.has(type)) {
-      return res.status(400).json({ ok: false, error: `type ไม่ถูกต้อง — ใช้ได้: ${[...VALID_EVENT_TYPES].join(', ')}` });
-    }
-
-    // validate date
-    const sinceDate = since ? new Date(since) : undefined;
-    const untilDate = until ? new Date(until) : undefined;
-    if (sinceDate && isNaN(sinceDate)) return res.status(400).json({ ok: false, error: 'since รูปแบบวันที่ไม่ถูกต้อง' });
-    if (untilDate && isNaN(untilDate)) return res.status(400).json({ ok: false, error: 'until รูปแบบวันที่ไม่ถูกต้อง' });
-
-    const limitNum  = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
-    const offsetNum = Math.max(parseInt(offset, 10) || 0, 0);
-
+    const { folder, type, limit = '100', offset = '0', since, until } = req.query;
     const events = await db.getFileEvents({
       folder,
       eventType: type,
-      limit:     limitNum,
-      offset:    offsetNum,
-      since:     sinceDate,
-      until:     untilDate,
+      limit:     Math.min(parseInt(limit, 10), 500),
+      offset:    parseInt(offset, 10),
+      since:     since ? new Date(since) : undefined,
+      until:     until ? new Date(until) : undefined,
     });
-    res.json({ ok: true, events, limit: limitNum, offset: offsetNum });
+    res.json({ ok: true, events });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -673,9 +662,9 @@ const SHUTDOWN_TOKEN = process.env.FV_SHUTDOWN_TOKEN || '';
 async function gracefulShutdown(reason = 'manual') {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`\n🛑 Shutting down... (${reason})`);
-  try { await sendOffline?.(); } catch {}
+  logger.info(`🛑 Shutting down... (${reason})`);
   try { await db.close(); } catch {}
+  try { await logger.close(); } catch {}
   const server = app.get('server');
   if (server) server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000);
@@ -701,29 +690,34 @@ function startServer(port) {
   const httpServer = http.createServer(app);
   app.set('server', httpServer);
 
-  httpServer.listen(port, '0.0.0.0', async () => {
-    console.log(`\n  ☁  FileVault Server`);
-    console.log(`  Local  :  http://localhost:${port}`);
-    console.log(`  Network:  http://0.0.0.0:${port}\n`);
+  // ── Register log API routes ──
+  logger.createLogRoutes(app);
 
-    try { await sendOnline?.(); setShutdownCallback?.(() => gracefulShutdown('discord')); }
-    catch (e) { console.log('Discord error:', e.message); }
+  httpServer.listen(port, '0.0.0.0', async () => {
+    logger.info(`☁  FileVault Server started`, { port, url: `http://localhost:${port}` });
 
     // ── PostgreSQL: migrate → load locks ──
     const dbReady = await db.runMigrations();
     if (dbReady) {
+      await auth.runAuthMigrations();
       await loadLocksFromDB();
       // ล้าง sessions หมดอายุทุก 6 ชั่วโมง
       setInterval(() => db.cleanExpiredSessions().catch(() => {}), 6 * 60 * 60 * 1000);
+      setInterval(() => auth.cleanExpiredUserSessions().catch(() => {}), 6 * 60 * 60 * 1000);
+      setInterval(() => auth.cleanOldLoginAttempts().catch(() => {}), 6 * 60 * 60 * 1000);
     } else {
       // fallback: โหลด locks จาก R2 เหมือนเดิม
       await loadLocksFromR2();
     }
+
+    // ── Schedule daily log rotation (runs once per day at midnight) ──
+    logger.rotateOldLogs();
+    setInterval(() => logger.rotateOldLogs(), 24 * 60 * 60 * 1000);
   });
 
   httpServer.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') { console.log(`Port ${port} busy → trying ${port + 1}`); startServer(port + 1); }
-    else console.error(err);
+    if (err.code === 'EADDRINUSE') { logger.warn(`Port ${port} busy → trying ${port + 1}`); startServer(port + 1); }
+    else logger.error('HTTP server error', { error: err.message, code: err.code });
   });
 }
 

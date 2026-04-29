@@ -1,41 +1,62 @@
-/**
- * stats-sync.js — DEPRECATED
- *
- * ไฟล์นี้ถูก supersede โดย PostgreSQL (db.js → upload_stats table)
- * เก็บไว้เพื่อ backward-compat เท่านั้น — ไม่เขียนลง R2 อีกต่อไป
- *
- * Migration path:
- *   เดิม: startSync(statsRef) → save JSON → R2:system/stats.json
- *   ใหม่: db.recordStat({...})  → PostgreSQL upload_stats table
- *
- * ถ้ายังมีโค้ดเรียก startSync / stopSync / loadStats อยู่ที่ไหน
- * ฟังก์ชันเหล่านี้จะ no-op โดยไม่ throw error
- */
+// stats-sync.js — sync stats กับ Cloudflare R2
 
-console.warn('⚠  [stats-sync] DEPRECATED — stats ถูกย้ายไป PostgreSQL (db.recordStat) แล้ว');
+const r2 = require('../core/r2');
 
-const STATS_KEY = process.env.FV_STATS_KEY || 'system/stats.json';
+const STATS_KEY     = process.env.FV_STATS_KEY    || 'system/stats.json';
+const SYNC_INTERVAL = parseInt(process.env.FV_STATS_SYNC_MS || '15000', 10);
 
-/** @deprecated ใช้ db.getStats() แทน */
+let _stats    = null;
+let _interval = null;
+let _saving   = false; // ป้องกัน concurrent save
+
+// ── Load stats จาก R2 ──
 async function loadStats(fallback = {}) {
-  console.warn('[stats-sync] loadStats() deprecated — ใช้ db.getStats() แทน');
-  return fallback;
+  try {
+    const obj    = await r2.downloadObject(STATS_KEY);
+    const remote = JSON.parse(obj.buffer.toString('utf8'));
+    console.log('📥 [stats-sync] Loaded stats from R2:', STATS_KEY);
+    return { ...fallback, ...remote };
+  } catch (e) {
+    if (e.$metadata?.httpStatusCode === 404 || e.name === 'NoSuchKey' || e.Code === 'NoSuchKey') {
+      console.log('📊 [stats-sync] No remote stats found — starting fresh');
+    } else {
+      console.warn('⚠ [stats-sync] Load error:', e.message, '— using local fallback');
+    }
+    return fallback;
+  }
 }
 
-/** @deprecated ใช้ db.recordStat() แทน */
-async function saveStats(_statsObj) {
-  console.warn('[stats-sync] saveStats() deprecated — ใช้ db.recordStat() แทน');
+// ── Save (idempotent, skip ถ้ากำลัง save อยู่) ──
+async function saveStats(statsObj) {
+  if (_saving) return;
+  _saving = true;
+  try {
+    const buf = Buffer.from(JSON.stringify(statsObj, null, 2), 'utf8');
+    await r2.uploadObject(STATS_KEY, buf, 'application/json');
+  } catch (e) {
+    console.warn('⚠ [stats-sync] Save error:', e.message);
+  } finally {
+    _saving = false;
+  }
 }
 
-/** @deprecated no-op */
-function startSync(_statsRef) {
-  console.warn('[stats-sync] startSync() deprecated — stats sync ถูกจัดการโดย PostgreSQL แล้ว');
+// ── Start auto-sync ──
+function startSync(statsRef) {
+  _stats    = statsRef;
+  _interval = setInterval(async () => {
+    if (_stats) await saveStats(_stats);
+  }, SYNC_INTERVAL);
+  console.log(`☁  [stats-sync] Auto-sync → R2:${STATS_KEY} every ${SYNC_INTERVAL / 1000}s`);
 }
 
-/** @deprecated no-op */
-async function stopSync() {}
+// ── Stop + final flush ──
+async function stopSync() {
+  if (_interval) { clearInterval(_interval); _interval = null; }
+  if (_stats)    { await saveStats(_stats); console.log('💾 [stats-sync] Final flush → R2'); }
+}
 
-/** @deprecated no-op */
-async function flushNow() {}
+async function flushNow() {
+  if (_stats) await saveStats(_stats);
+}
 
 module.exports = { loadStats, saveStats, startSync, stopSync, flushNow, STATS_KEY };

@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="stylesheet" href="styles.css"/>
-<link rel="stylesheet" href="categories.css"/>
 </head>
 <body>
 
@@ -24,6 +23,7 @@
       <button class="topnav-btn" onclick="toggleView()" id="view-toggle-btn" title="สลับมุมมอง">⊞</button>
       <button class="topnav-btn" onclick="toggleGlobalPreview()" id="preview-global-btn" title="เปิด/ปิด Preview">👁</button>
       <button class="topnav-btn" onclick="toggleDark()" id="dark-btn" title="Dark Mode">🌙</button>
+      <button class="topnav-btn" id="user-nav-btn" onclick="toggleUserMenu()" title="บัญชีผู้ใช้">🙂</button>
     </div>
   </div>
 
@@ -78,7 +78,6 @@
           <input type="file" id="upload-input" multiple style="display:none" onchange="handleUpload(event)"/>
         </div>
       </div>
-
 
       <!-- SORT & FILTER BAR -->
       <div class="sort-bar">
@@ -152,28 +151,22 @@
       </div>
       <button class="modal-close" onclick="closeEditor()">✕</button>
     </div>
-    <!-- Preview toggle bar -->
     <div id="preview-toggle-bar" class="preview-toggle-bar hidden">
       <button id="btn-show-preview" class="ptab active" onclick="switchModalTab('preview')">👁 Preview</button>
       <button id="btn-show-editor" class="ptab" onclick="switchModalTab('editor')">✏️ แก้ไข</button>
     </div>
     <textarea id="editor" class="modal-editor" placeholder="เนื้อหาไฟล์..."></textarea>
-    <!-- Preview area: image -->
     <div id="modal-preview" class="modal-preview hidden"><img id="preview-img"/></div>
-    <!-- Preview area: PDF -->
     <div id="modal-preview-pdf" class="modal-preview-embed hidden">
       <iframe id="preview-pdf" src="" frameborder="0"></iframe>
     </div>
-    <!-- Preview area: video -->
     <div id="modal-preview-video" class="modal-preview-embed hidden">
       <video id="preview-video" controls playsinline></video>
     </div>
-    <!-- Preview area: audio -->
     <div id="modal-preview-audio" class="modal-preview-audio hidden">
       <div class="audio-art" id="audio-art">🎵</div>
       <audio id="preview-audio" controls></audio>
     </div>
-    <!-- Preview area: unsupported -->
     <div id="modal-preview-none" class="modal-preview-none hidden">
       <div class="pnone-ico" id="pnone-ico">📄</div>
       <div class="pnone-msg">ไม่รองรับ Preview สำหรับไฟล์ประเภทนี้</div>
@@ -237,7 +230,7 @@
   </div>
 </div>
 
-<!-- ══ UNLOCK MODAL ══ -->
+<!-- UNLOCK MODAL -->
 <div class="modal-bg hidden" id="lock-modal">
   <div class="fv-card fv-card-sm">
     <button class="fv-card-close" onclick="closeLockModal()">✕</button>
@@ -254,14 +247,13 @@
   </div>
 </div>
 
-<!-- ══ LOCK SETTINGS MODAL ══ -->
+<!-- LOCK SETTINGS MODAL -->
 <div class="modal-bg hidden" id="lock-settings-modal">
   <div class="fv-card fv-card-sm">
     <button class="fv-card-close" onclick="closeLockSettings()">✕</button>
     <div class="fv-card-icon fv-card-icon-lock" id="lset-icon">🔐</div>
     <div class="fv-card-title" id="lset-title">ตั้งรหัส Folder</div>
     <div class="fv-card-sub" id="lset-folder-name"></div>
-    <!-- Set lock view -->
     <div id="lset-set">
       <div class="fv-field-label">รหัสผ่านใหม่ <span style="opacity:.5">(อย่างน้อย 4 ตัว)</span></div>
       <div class="fv-pin-field">
@@ -270,7 +262,6 @@
       <div class="fv-field-label" style="margin-top:10px">ยืนยันรหัสผ่าน<span style="opacity:.5">(บังคับ)</span></div>
       <input id="lset-hint" class="fv-text-input" type="text" placeholder="1234" maxlength="40"/>
     </div>
-    <!-- Remove lock view -->
     <div id="lset-remove" class="hidden">
       <div class="fv-field-label">ใส่รหัสเดิมเพื่อถอดล็อค</div>
       <div class="fv-pin-field">
@@ -284,7 +275,7 @@
   </div>
 </div>
 
-<!-- ══ RENAME FOLDER MODAL ══ -->
+<!-- RENAME FOLDER MODAL -->
 <div class="modal-bg hidden" id="rename-folder-modal">
   <div class="fv-card fv-card-sm">
     <button class="fv-card-close" onclick="closeRenameFolderModal()">✕</button>
@@ -344,7 +335,57 @@
   </div>
 </div>
 
+<!-- USER MENU -->
+<div id="user-menu" style="display:none">
+  <div class="um-info">
+    <span id="um-avatar" class="um-avatar">🙂</span>
+    <div>
+      <div id="um-name" class="um-name"></div>
+      <div id="um-role" class="um-role"></div>
+    </div>
+  </div>
+  <button class="um-logout" onclick="doLogout()">🚪 ออกจากระบบ</button>
+</div>
+
 <script src="app.js"></script>
 <script src="categories.js"></script>
-</body>
+<script>
+// ── User Auth UI ──
+(async function initUserAuth() {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (r.status === 401) { window.location.href = '/auth.html'; return; }
+    const d = await r.json();
+    if (!d.ok) { window.location.href = '/auth.html'; return; }
+
+    const u = d.user;
+    localStorage.setItem('fv_user', JSON.stringify(u));
+    document.getElementById('user-nav-btn').textContent = u.avatarEmoji || '🙂';
+    document.getElementById('um-avatar').textContent   = u.avatarEmoji || '🙂';
+    document.getElementById('um-name').textContent     = u.displayName || u.username;
+    document.getElementById('um-role').textContent     = u.role === 'admin' ? '⭐ Admin' : '👤 User';
+  } catch (e) {
+    console.warn('Auth check failed:', e.message);
+  }
+})();
+
+function toggleUserMenu() {
+  const m = document.getElementById('user-menu');
+  m.style.display = m.style.display === 'none' ? '' : 'none';
+}
+
+document.addEventListener('click', e => {
+  const menu = document.getElementById('user-menu');
+  const btn  = document.getElementById('user-nav-btn');
+  if (menu && !menu.contains(e.target) && e.target !== btn) {
+    menu.style.display = 'none';
+  }
+});
+
+async function doLogout() {
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+  localStorage.removeItem('fv_user');
+  window.location.href = '/auth.html';
+}
+</script>
 </html>

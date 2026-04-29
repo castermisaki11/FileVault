@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install
-    startCommand: node server.js & node bot.js
+    startCommand: node index.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -13,6 +13,8 @@ services:
       - key: FV_SERVER_URL
         value: https://filevault-wiu1.onrender.com   # ← เปลี่ยนเป็น URL จริงของ Render service
       # Set the rest via Render Dashboard (secrets):
+      # DATABASE_URL            — PostgreSQL connection string (neon.tech / supabase / render postgres)
       # R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL
-      # DISCORD_TOKEN, DISCORD_GUILD_ID, CHANNEL_ID, MTDISCORD_CHANNEL_ID
-      # DISCORD_CLIENT_ID, DISCORD_CLIENT_ID2
+      # DISCORD_TOKEN, DISCORD_CLIENT_ID, CHANNEL_ID, DISCORD_ADMIN_IDS
+      # DISCORD_TOKEN2, CLIENT_ID2
+      # FV_SITE_PASSWORD, FV_SHUTDOWN_TOKEN

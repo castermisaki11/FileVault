@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FileVault — เข้าสู่ระบบ</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0b0d14;
+  --bg2:      #12151f;
+  --bg3:      #1a1e2e;
+  --border:   #252a3d;
+  --border2:  #2f3550;
+  --t1:       #e8eaf6;
+  --t2:       #9ea8c8;
+  --t3:       #5c6480;
+  --accent:   #5c7cfa;
+  --accent2:  #7c3aed;
+  --green:    #22c55e;
+  --red:      #f87171;
+  --gold:     #f59e0b;
+  --glow:     rgba(92,124,250,.18);
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Sarabun', sans-serif;
+  overflow: hidden;
+}
+
+/* ── Background mesh ── */
+.bg-mesh {
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(92,124,250,.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(124,58,237,.10) 0%, transparent 60%),
+    var(--bg);
+}
+.bg-grid {
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── Card ── */
+.card {
+  position: relative; z-index: 10;
+  width: 100%; max-width: 420px;
+  margin: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 40px 36px 36px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 32px 80px rgba(0,0,0,.5), 0 0 60px var(--glow);
+  animation: slideUp .5s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(32px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Logo ── */
+.logo-wrap {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.logo-icon {
+  width: 64px; height: 64px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px;
+  box-shadow: 0 8px 24px rgba(92,124,250,.35);
+  margin-bottom: 14px;
+  animation: pulse 3s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(92,124,250,.35); }
+  50%       { box-shadow: 0 8px 36px rgba(92,124,250,.6); }
+}
+.logo-title {
+  font-family: 'Space Mono', monospace;
+  font-size: 1.4rem; font-weight: 700;
+  color: var(--t1);
+  letter-spacing: .5px;
+}
+.logo-sub {
+  color: var(--t3);
+  font-size: .82rem;
+  margin-top: 4px;
+}
+
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  background: var(--bg3);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 28px;
+}
+.tab {
+  flex: 1;
+  padding: 9px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--t3);
+  font-family: 'Sarabun', sans-serif;
+  font-size: .9rem; font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+.tab.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(92,124,250,.4);
+}
+
+/* ── Form ── */
+.field { margin-bottom: 14px; }
+.field-label {
+  display: block;
+  font-size: .78rem; font-weight: 600;
+  color: var(--t2);
+  margin-bottom: 6px;
+  letter-spacing: .3px;
+}
+.field-row { position: relative; }
+.field-icon {
+  position: absolute; left: 13px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 1rem; pointer-events: none;
+  opacity: .6;
+}
+.input {
+  width: 100%;
+  padding: 11px 14px 11px 38px;
+  background: var(--bg3);
+  border: 1.5px solid var(--border);
+  border-radius: 11px;
+  color: var(--t1);
+  font-family: 'Sarabun', sans-serif;
+  font-size: .95rem;
+  outline: none;
+  transition: border .2s, box-shadow .2s;
+}
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(92,124,250,.15);
+}
+.input::placeholder { color: var(--t3); }
+
+.pw-toggle {
+  position: absolute; right: 12px; top: 50%;
+  transform: translateY(-50%);
+  background: none; border: none;
+  color: var(--t3); cursor: pointer;
+  font-size: .9rem; padding: 4px;
+  transition: color .2s;
+}
+.pw-toggle:hover { color: var(--t1); }
+
+/* ── Avatar picker ── */
+.avatar-label { font-size: .78rem; font-weight: 600; color: var(--t2); margin-bottom: 8px; display: block; }
+.avatar-grid {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px;
+}
+.avatar-opt {
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+  background: var(--bg3);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.avatar-opt:hover    { border-color: var(--border2); transform: scale(1.1); }
+.avatar-opt.selected { border-color: var(--accent); background: rgba(92,124,250,.15); }
+
+/* ── Submit btn ── */
+.btn-submit {
+  width: 100%; padding: 13px;
+  border: none; border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
+  font-family: 'Sarabun', sans-serif;
+  font-size: 1rem; font-weight: 700;
+  cursor: pointer;
+  transition: opacity .2s, transform .1s;
+  box-shadow: 0 4px 16px rgba(92,124,250,.4);
+  margin-top: 6px;
+  letter-spacing: .3px;
+}
+.btn-submit:hover   { opacity: .92; }
+.btn-submit:active  { transform: scale(.98); }
+.btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Error / Success ── */
+.alert {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: .85rem;
+  margin-bottom: 14px;
+  display: none;
+  animation: fadeIn .25s ease;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+.alert-err     { background: rgba(248,113,113,.1);  border: 1px solid rgba(248,113,113,.3);  color: var(--red); }
+.alert-success { background: rgba(34,197,94,.1);    border: 1px solid rgba(34,197,94,.3);    color: var(--green); }
+.alert.show    { display: flex; align-items: center; gap: 8px; }
+
+/* ── Divider ── */
+.divider {
+  text-align: center;
+  position: relative;
+  color: var(--t3);
+  font-size: .78rem;
+  margin: 20px 0;
+}
+.divider::before {
+  content: '';
+  position: absolute; top: 50%; left: 0; right: 0;
+  height: 1px; background: var(--border);
+}
+.divider span {
+  position: relative;
+  background: var(--bg2);
+  padding: 0 10px;
+}
+
+/* ── First-user badge ── */
+.first-badge {
+  text-align: center;
+  font-size: .78rem;
+  color: var(--gold);
+  background: rgba(245,158,11,.08);
+  border: 1px solid rgba(245,158,11,.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  display: none;
+}
+.first-badge.show { display: block; }
+
+/* ── Loading spinner ── */
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Redirect overlay ── */
+.redirect-ov {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .4s;
+}
+.redirect-ov.show { opacity: 1; pointer-events: all; }
+.redirect-icon { font-size: 3rem; animation: bounce .8s ease infinite alternate; }
+@keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+.redirect-text { color: var(--t2); font-size: 1rem; }
+
+/* ── Strength bar ── */
+.strength-bar { display: flex; gap: 4px; margin-top: 6px; }
+.strength-seg {
+  flex: 1; height: 3px; border-radius: 2px;
+  background: var(--border);
+  transition: background .25s;
+}
+.strength-seg.s1 { background: var(--red); }
+.strength-seg.s2 { background: var(--gold); }
+.strength-seg.s3 { background: var(--green); }
+
+@media (max-width: 480px) {
+  .card { padding: 28px 22px 24px; margin: 12px; }
+}
+</style>
+</head>
+<body>
+<div class="bg-mesh"></div>
+<div class="bg-grid"></div>
+
+<div class="redirect-ov" id="redirect-ov">
+  <div class="redirect-icon">✅</div>
+  <div class="redirect-text">กำลังเข้าสู่ระบบ...</div>
+</div>
+
+<div class="card">
+  <!-- Logo -->
+  <div class="logo-wrap">
+    <div class="logo-icon">☁</div>
+    <div class="logo-title">FileVault</div>
+    <div class="logo-sub" id="logo-sub">จัดการไฟล์ของคุณได้ทุกที่</div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" id="tab-login"    onclick="switchTab('login')">เข้าสู่ระบบ</button>
+    <button class="tab"       id="tab-register"  onclick="switchTab('register')">สมัครสมาชิก</button>
+  </div>
+
+  <!-- First-user info -->
+  <div class="first-badge" id="first-badge">⭐ คุณจะเป็น Admin คนแรก เนื่องจากยังไม่มีผู้ใช้ในระบบ</div>
+
+  <!-- Alert -->
+  <div class="alert alert-err"     id="alert-err"></div>
+  <div class="alert alert-success" id="alert-ok"></div>
+
+  <!-- ═══ LOGIN FORM ═══ -->
+  <div id="form-login">
+    <div class="field">
+      <label class="field-label">อีเมล</label>
+      <div class="field-row">
+        <span class="field-icon">✉</span>
+        <input class="input" id="l-email" type="email" placeholder="you@example.com" autocomplete="email" onkeydown="ifEnter(event,'l-pw')"/>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">รหัสผ่าน</label>
+      <div class="field-row">
+        <span class="field-icon">🔑</span>
+        <input class="input" id="l-pw" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="ifEnter(event,null,doLogin)"/>
+        <button class="pw-toggle" onclick="togglePw('l-pw',this)" type="button">👁</button>
+      </div>
+    </div>
+    <button class="btn-submit" id="btn-login" onclick="doLogin()">เข้าสู่ระบบ</button>
+  </div>
+
+  <!-- ═══ REGISTER FORM ═══ -->
+  <div id="form-register" style="display:none">
+    <div class="field">
+      <label class="field-label">ชื่อผู้ใช้ (username)</label>
+      <div class="field-row">
+        <span class="field-icon">👤</span>
+        <input class="input" id="r-username" type="text" placeholder="yourname" maxlength="30" autocomplete="username" onkeydown="ifEnter(event,'r-email')"/>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">อีเมล</label>
+      <div class="field-row">
+        <span class="field-icon">✉</span>
+        <input class="input" id="r-email" type="email" placeholder="you@example.com" autocomplete="email" onkeydown="ifEnter(event,'r-pw')"/>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">รหัสผ่าน <span style="opacity:.5;font-weight:400">(อย่างน้อย 6 ตัว)</span></label>
+      <div class="field-row">
+        <span class="field-icon">🔑</span>
+        <input class="input" id="r-pw" type="password" placeholder="••••••••" autocomplete="new-password" oninput="updateStrength(this.value)" onkeydown="ifEnter(event,'r-pw2')"/>
+        <button class="pw-toggle" onclick="togglePw('r-pw',this)" type="button">👁</button>
+      </div>
+      <div class="strength-bar" id="strength-bar">
+        <div class="strength-seg" id="ss1"></div>
+        <div class="strength-seg" id="ss2"></div>
+        <div class="strength-seg" id="ss3"></div>
+        <div class="strength-seg" id="ss4"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">ยืนยันรหัสผ่าน</label>
+      <div class="field-row">
+        <span class="field-icon">🔒</span>
+        <input class="input" id="r-pw2" type="password" placeholder="••••••••" autocomplete="new-password" onkeydown="ifEnter(event,null,doRegister)"/>
+        <button class="pw-toggle" onclick="togglePw('r-pw2',this)" type="button">👁</button>
+      </div>
+    </div>
+    <div>
+      <span class="avatar-label">เลือก Avatar</span>
+      <div class="avatar-grid" id="avatar-grid"></div>
+    </div>
+    <button class="btn-submit" id="btn-register" onclick="doRegister()">สมัครสมาชิก</button>
+  </div>
+</div>
+
+<script>
+const AVATARS = ['🙂','😎','🦊','🐱','🐺','🐻','🦁','🐸','🐼','🦄','🤖','👾','🦋','🌟','🔥','❄️','🎮','🎨'];
+let   selectedAvatar = AVATARS[0];
+let   currentTab     = 'login';
+
+// ── Avatar grid ──
+const grid = document.getElementById('avatar-grid');
+AVATARS.forEach((a, i) => {
+  const el = document.createElement('div');
+  el.className = 'avatar-opt' + (i === 0 ? ' selected' : '');
+  el.textContent = a;
+  el.onclick = () => {
+    document.querySelectorAll('.avatar-opt').forEach(e => e.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedAvatar = a;
+  };
+  grid.appendChild(el);
+});
+
+// ── Check first user ──
+async function checkFirstUser() {
+  try {
+    const r = await fetch('/api/auth/first-user-check');
+    const d = await r.json();
+    if (d.isFirst) document.getElementById('first-badge').classList.add('show');
+  } catch {}
+}
+checkFirstUser();
+
+// ── Tab switch ──
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('form-login').style.display    = tab === 'login'    ? '' : 'none';
+  document.getElementById('form-register').style.display = tab === 'register' ? '' : 'none';
+  document.getElementById('tab-login').classList.toggle('active',    tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  clearAlerts();
+  if (tab === 'register') checkFirstUser();
+}
+
+// ── Helpers ──
+function showErr(msg)  { const el = document.getElementById('alert-err'); el.innerHTML = '❌ ' + msg; el.classList.add('show'); document.getElementById('alert-ok').classList.remove('show'); }
+function showOk(msg)   { const el = document.getElementById('alert-ok');  el.innerHTML = '✅ ' + msg; el.classList.add('show'); document.getElementById('alert-err').classList.remove('show'); }
+function clearAlerts() { document.getElementById('alert-err').classList.remove('show'); document.getElementById('alert-ok').classList.remove('show'); }
+
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (loading) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>กำลังดำเนินการ...'; }
+  else { btn.disabled = false; btn.textContent = btnId === 'btn-login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'; }
+}
+
+function ifEnter(e, nextId, fn) {
+  if (e.key === 'Enter') { if (nextId) { document.getElementById(nextId)?.focus(); } else if (fn) fn(); }
+}
+
+function togglePw(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (el.type === 'password') { el.type = 'text'; btn.textContent = '🙈'; }
+  else { el.type = 'password'; btn.textContent = '👁'; }
+}
+
+function updateStrength(pw) {
+  let score = 0;
+  if (pw.length >= 6)  score++;
+  if (pw.length >= 10) score++;
+  if (/[A-Z]/.test(pw) || /[!@#$%^&*]/.test(pw)) score++;
+  if (pw.length >= 14) score++;
+  const cls = ['','s1','s1','s2','s3'];
+  for (let i = 1; i <= 4; i++) {
+    const seg = document.getElementById('ss' + i);
+    seg.className = 'strength-seg' + (i <= score ? ' ' + cls[score] : '');
+  }
+}
+
+function redirect() {
+  document.getElementById('redirect-ov').classList.add('show');
+  setTimeout(() => { window.location.href = '/'; }, 800);
+}
+
+// ── Login ──
+async function doLogin() {
+  clearAlerts();
+  const email = document.getElementById('l-email').value.trim();
+  const pw    = document.getElementById('l-pw').value;
+  if (!email || !pw) return showErr('กรุณากรอก email และรหัสผ่าน');
+
+  setLoading('btn-login', true);
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pw }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      localStorage.setItem('fv_user', JSON.stringify(d.user));
+      showOk('ยินดีต้อนรับ ' + (d.user.displayName || d.user.username));
+      setTimeout(redirect, 600);
+    } else {
+      showErr(d.error || 'เกิดข้อผิดพลาด');
+      setLoading('btn-login', false);
+    }
+  } catch {
+    showErr('เชื่อมต่อ server ไม่ได้');
+    setLoading('btn-login', false);
+  }
+}
+
+// ── Register ──
+async function doRegister() {
+  clearAlerts();
+  const username = document.getElementById('r-username').value.trim();
+  const email    = document.getElementById('r-email').value.trim();
+  const pw       = document.getElementById('r-pw').value;
+  const pw2      = document.getElementById('r-pw2').value;
+
+  if (!username || !email || !pw) return showErr('กรุณากรอกข้อมูลให้ครบ');
+  if (pw !== pw2)                  return showErr('รหัสผ่านไม่ตรงกัน');
+  if (pw.length < 6)               return showErr('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+
+  setLoading('btn-register', true);
+  try {
+    const r = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password: pw, avatarEmoji: selectedAvatar }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      localStorage.setItem('fv_user', JSON.stringify(d.user));
+      const msg = d.isFirstUser ? '🎉 สมัครสมาชิกสำเร็จ! คุณได้รับสิทธิ์ Admin' : '🎉 สมัครสมาชิกสำเร็จ!';
+      showOk(msg);
+      setTimeout(redirect, 700);
+    } else {
+      showErr(d.error || 'เกิดข้อผิดพลาด');
+      setLoading('btn-register', false);
+    }
+  } catch {
+    showErr('เชื่อมต่อ server ไม่ได้');
+    setLoading('btn-register', false);
+  }
+}
+
+// Auto-focus
+document.getElementById('l-email').focus();
+</script>
+</body>
+</html>
